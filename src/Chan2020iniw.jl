@@ -19,9 +19,9 @@ function Chan2020iniw(YY,VARSetup::BVARmodelSetup,hypSetup::BVARmodelHypSetup)
     @unpack p,nburn,nsave = VARSetup
     ndraws  = nsave+nburn;
 
-    Y, X, T, n, sigmaP, S_0, Σt_inv, Vβminn_inv, Vβminn_inv_elview, Σ_invsp, Σt_LI, XtΣ_inv_den, XtΣ_inv_X, Xsur_den, Xsur_CI, X_CI, k, K_β, beta, intercept = BEAVARs.initMinn(YY,p);
+    Y, X, T, n, sigmaP, S_0, Σt_inv, Vβminn_inv, Vβminn_inv_elview, Σ_invsp, Σt_LI, XtΣ_inv_den, XtΣ_inv_X, Xsur_den, Xsur_CI, X_CI, k, K_β, βminn, intercept = BEAVARs.initMinn(YY,p);
 
-    (idx_kappa1,idx_kappa2, Vβminn, βminn) = prior_Minn(n,p,sigmaP,hypSetup)
+    (idx_kappa1,idx_kappa2, Vβminn) = prior_Minn(n,p,sigmaP,hypSetup)
 
     Vβminn_inv_elview[:] = 1.0./Vβminn;             # update the diagonal of Vβminn_inv
     Xsur_den[Xsur_CI] = X[X_CI];                    # update Xsur  
