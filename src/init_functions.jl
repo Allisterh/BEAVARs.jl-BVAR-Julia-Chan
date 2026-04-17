@@ -142,7 +142,11 @@ function updatePriors3!(Y,X,n,mu_prior,deltaP,sigmaP,intercept,BitVec)
 end
 
 
+"""
+    ar1(YY,sig) 
 
+    Performs univariate AR(1) regressions with constant on each column of YY and returns the vector of variances of the residuals. Used for training priors in the BEAVARs model.
+"""
 function ar1(YY::Matrix{Float64},sig::Vector{Float64})
     n = size(YY,2);
     T_y = size(YY,1)-1;
@@ -221,7 +225,19 @@ function initParamMatrices(n::Int,p::Int,intercept::Int)
 end
 
 
+"""
+    modelFit(out_strct,varSetup)
 
+     Generates fitted values from the model output and the model setup. Used for in-sample fit and for calculating residuals for the training sample.
+
+     Arguments:
+        out_strct: A structure with the model output, including the store_β and YY matrices
+        varSetup: A structure with the model setup, including p and const_loc
+
+     Returns:
+        Yfit: The fitted values from the model
+        Yact: The actual values from the data (YY)
+"""
 function modelFit(out_strct,varSetup)
     @unpack p, const_loc = varSetup;
     if const_loc == 1
