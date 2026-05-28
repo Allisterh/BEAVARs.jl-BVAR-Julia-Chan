@@ -6,8 +6,8 @@ data_struct = makeDataSetup(model_type,dataHF_tab, dataLF_tab,0)
 out_struct = beavar(model_type,set_struct,hyp_struct,data_struct)
 
 Yfit, Yact = BEAVARs.modelFit(out_struct,set_struct)
-plot(Yfit[:,2])
-plot!(Yact[:,2])
+# plot(Yfit[:,2])   # this requires plots
+# plot!(Yact[:,2])
 
 fcast_struct = BEAVARs.forecast(out_struct,set_struct,data_struct)
 BEAVARs.forecast_plot(fcast_struct,plot_fcastOnly=1)
