@@ -179,7 +179,7 @@ end
 
 
 @doc raw"""
-    BGR2010(YY,set_strct,hyp_strct)
+    BGR2010(YY,set_struct,hyp_struct)
 
 Implements the BVAR with Minnesota prior with a SUR form and common stochastic volatilty (csv) following Chan (2020)
 

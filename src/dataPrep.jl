@@ -168,7 +168,7 @@ end
 
 
 @doc raw"""
-    BEAVARs.pseudo_oos(fdataHF_tab,fdataLF_tab,pseudoHF_beg_date,pseudoHF_end_date,ragged_beg_date,ragged_end_date,pubDelay,aggMix,model_type, set_strct, hyp_strct)
+    BEAVARs.pseudo_oos(fdataHF_tab,fdataLF_tab,pseudoHF_beg_date,pseudoHF_end_date,ragged_beg_date,ragged_end_date,pubDelay,aggMix,model_type, set_struct, hyp_struct)
 
     Generate a dictionary of LoopSetup structures for pseudo out-of-sample forecasting with ragged-edge data
 
@@ -182,8 +182,8 @@ end
     pubDelay: publication delay in months between high-frequency and low-frequency data
     aggMix: aggregation mix parameter (0=growth rates, 1=levels)
     model_type: model type, output of makeSetup function
-    set_strct: BVARmodelSetup structure
-    hyp_strct: BVARmodelHypers structure
+    set_struct: BVARmodelSetup structure
+    hyp_struct: BVARmodelHypers structure
 
 # Returns
     vint_dict: dictionary of LoopSetup structures for each pseudo out-of-sample date
@@ -246,7 +246,7 @@ For `2018-05-01`:                                   For `2018-06-01`:           
 ```
 preserving the ragged edge pattern of the data.
 """
-function pseudo_oos(fdataHF_tab,fdataLF_tab,pseudoHF_beg_date,pseudoHF_end_date,ragged_beg_date,ragged_end_date,pubDelay,aggMix,model_type, set_strct, hyp_strct)
+function pseudo_oos(fdataHF_tab,fdataLF_tab,pseudoHF_beg_date,pseudoHF_end_date,ragged_beg_date,ragged_end_date,pubDelay,aggMix,model_type, set_struct, hyp_struct)
     dataHF_beg_date = timestamp(fdataHF_tab)[1];
     fraggedHF = ragged_beg_date:Month(1):ragged_end_date;         # range of ragged edge of the high-frequency data (range between the last row of the balanced sample and the first row of NaNs for every variable)
     fraggednan = isnan.(values(fdataHF_tab[fraggedHF]));               # logical array indicating which variables are NaN in the ragged edge    
@@ -267,10 +267,10 @@ function pseudo_oos(fdataHF_tab,fdataLF_tab,pseudoHF_beg_date,pseudoHF_end_date,
         rangeLF = Date(2005, 1, 1):Quarter(1):LF_beg_date;         # range for the low frequency
         dataLF_tab = copy(fdataLF_tab[rangeLF]);
 
-        data_strct = makeDataSetup(model_type,dataHF_tab, dataLF_tab,aggMix)
-        loop_strct = LoopSetup(model_type,set_strct,hyp_strct,data_strct)
+        data_struct = makeDataSetup(model_type,dataHF_tab, dataLF_tab,aggMix)
+        loop_struct = LoopSetup(model_type,set_struct,hyp_struct,data_struct)
 
-        vint_dict["v"*Dates.format(HF_beg_date,"yyyy-mm-dd")] = loop_strct
+        vint_dict["v"*Dates.format(HF_beg_date,"yyyy-mm-dd")] = loop_struct
     end
     return vint_dict
 end

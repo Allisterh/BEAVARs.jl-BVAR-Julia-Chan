@@ -182,17 +182,17 @@ end
 
 
 
-# function dispatchModel(::Blagov2025_type,YY_tup, hyp_strct, p,n_burn,n_save,n_irf,n_fcst)
+# function dispatchModel(::Blagov2025_type,YY_tup, hyp_struct, p,n_burn,n_save,n_irf,n_fcst)
 #     println("Hello Blagov2025")
 #     intercept = 1;
 #     dataHF_tab  = YY_tup[1]
 #     dataLF_tab  = YY_tup[2]
 #     varList     = YY_tup[3]
 #     trans       = YY_tup[4] # transformation of the LF variables (0: growth rates or 1: log-levels)
-#     set_strct = VARSetup(p,n_save,n_burn,n_irf,n_fcst,intercept);
-#     store_YY,store_β, store_Σt_inv, M_zsp, z_vec, Sm_bit, store_Σ, store_h, store_s2_h, store_ρ, store_σ_h2, store_eh = Blagov2025(dataHF_tab,dataLF_tab,varList,set_strct,hyp_strct,trans)    
-#     out_strct = VAROutput_Blagov2025(store_β,store_Σt_inv,store_YY,M_zsp, z_vec, Sm_bit,store_Σ, store_h, store_s2_h, store_ρ, store_σ_h2, store_eh)
-#     return out_strct, set_strct
+#     set_struct = VARSetup(p,n_save,n_burn,n_irf,n_fcst,intercept);
+#     store_YY,store_β, store_Σt_inv, M_zsp, z_vec, Sm_bit, store_Σ, store_h, store_s2_h, store_ρ, store_σ_h2, store_eh = Blagov2025(dataHF_tab,dataLF_tab,varList,set_struct,hyp_struct,trans)    
+#     out_struct = VAROutput_Blagov2025(store_β,store_Σt_inv,store_YY,M_zsp, z_vec, Sm_bit,store_Σ, store_h, store_s2_h, store_ρ, store_σ_h2, store_eh)
+#     return out_struct, set_struct
 # end
 
 
@@ -327,21 +327,21 @@ end
 
 
 @doc raw"""
-    lf_mat, lf_mat_med = Blagov2025_hf2lf(out_strct,Magg,var_name::Symbol)
+    lf_mat, lf_mat_med = Blagov2025_hf2lf(out_struct,Magg,var_name::Symbol)
 
 Convert high-frequency draws to low-frequency draws.
 
 # Arguments
-    out_strct: output structure from the Bayesian VAR model
+    out_struct: output structure from the Bayesian VAR model
     Magg:       matrix with the aggregation restrictions, output from Blagov2025_createMagg
     var_name:  Symbol for the variable that should be aggregated to lower frequency
 
 See also Blagov2025_createMagg
 """
-function Blagov2025_hf2lf(out_strct,Magg,var_name::Symbol)
+function Blagov2025_hf2lf(out_struct,Magg,var_name::Symbol)
  
-    var_no = findfirst(==( var_name ), out_strct.var_list);   # here ==( :gdpBG ) is an anonymous function. ==(a, b) is the same as a == b and x -> x == :gdpBG is equiv to ==( :gdpBG )
-    hf_mat = out_strct.store_YY[:,var_no,:]; # matrix with high-frequency data x draws to be aggregated to low-frequency
+    var_no = findfirst(==( var_name ), out_struct.var_list);   # here ==( :gdpBG ) is an anonymous function. ==(a, b) is the same as a == b and x -> x == :gdpBG is equiv to ==( :gdpBG )
+    hf_mat = out_struct.store_YY[:,var_no,:]; # matrix with high-frequency data x draws to be aggregated to low-frequency
     lf_mat = Magg*hf_mat;                    # aggregated low-frequency x draws
     lf_mat_med = percentile_mat(lf_mat,0.5,dims=2);
     lf_mat_mean =  mean(lf_mat,dims=2);

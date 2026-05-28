@@ -19,7 +19,7 @@ Generate a dataset strcture for use with the single-frequency models
     data_tab:   TimeArray with the data_de
     var_list:   A symbol list with the variable names. Will be used for oredering the variables. Uses by default the names from data_tab if not supplied. note that Symbol lists have a particular synthax.
 # Returns
-    data_strct: A dataBVAR_TA structure with the data and metadata
+    data_struct: A dataBVAR_TA structure with the data and metadata
 """
 function makeDataSetup(::Chan2020minn_type,data_tab::TimeArray; var_list =  colnames(data_tab))
     return dataBVAR_TA(data_tab, var_list)
@@ -110,7 +110,7 @@ Generates forecasts from the Chan2020minn model output
 
 The function generates forecasts from the Chan2020minn model output.
 """
-function forecast(VAROutput::VAROutput_Chan2020minn,VARSetup::BVARmodelSetup,data_strct::BVARmodelDataSetup)
+function forecast(VAROutput::VAROutput_Chan2020minn,VARSetup::BVARmodelSetup,data_struct::BVARmodelDataSetup)
     @unpack store_β, store_Σ, YY = VAROutput
     @unpack n_fcst,p,nsave = VARSetup
     n = size(YY,2);
@@ -129,8 +129,8 @@ function forecast(VAROutput::VAROutput_Chan2020minn,VARSetup::BVARmodelSetup,dat
             Yfor[p+i_for,:]=tclass'*A_draw  .+ (cholesky(Σ_draw).U*randn(n,1))';    
         end
     end
-    fcast_strct = BEAVARs.VARForecast(Yfor3D,data_strct.data_tab,data_strct.var_list,n_fcst)
-    return fcast_strct
+    fcast_struct = BEAVARs.VARForecast(Yfor3D,data_struct.data_tab,data_struct.var_list,n_fcst)
+    return fcast_struct
 
 end # end function fcastChan2020minn()
 
@@ -174,10 +174,10 @@ end # end function fcastChan2020minn()
 #         YY = values(YY_TA)
 #         varList = colnames(YY_TA)
 #     end
-#     set_strct = VARSetup(p,n_save,n_burn,n_irf,n_fcst,intercept);
-#     store_β, store_Σ = Chan2020minn(YY,set_strct,hyper_str);
-#     out_strct = VAROutput_Chan2020minn(store_β,store_Σ,YY)
-#     return out_strct, set_strct
+#     set_struct = VARSetup(p,n_save,n_burn,n_irf,n_fcst,intercept);
+#     store_β, store_Σ = Chan2020minn(YY,set_struct,hyper_str);
+#     out_struct = VAROutput_Chan2020minn(store_β,store_Σ,YY)
+#     return out_struct, set_struct
 # end
 
 

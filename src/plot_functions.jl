@@ -68,15 +68,15 @@ end
 
 
 """
-    forecast_plot(fcast_strct::VARForecast)
+    forecast_plot(fcast_struct::VARForecast)
 
 The function generates forecast plots from the VARForecast structure. 
 The function uses the 3D array of forecasts (Yfor3D) and the variable names (var_list) to create a plot for each variable, showing the median forecast along with confidence intervals based on the percentiles of the forecast distribution. 
 The layout of the plots is determined by the number of variables being forecasted.
 
 """
-function forecast_plot(fcast_strct::VARForecast;plot_fcastOnly=1)
-    @unpack Yfor3D, data_tab, var_list, n_fcst = fcast_strct
+function forecast_plot(fcast_struct::VARForecast;plot_fcastOnly=1)
+    @unpack Yfor3D, data_tab, var_list, n_fcst = fcast_struct
     n = size(Yfor3D,2);
     p = size(Yfor3D,1)-n_fcst;
     date_vec = timestamp(data_tab);

@@ -244,26 +244,26 @@ end
 
 
 """
-    modelFit(out_strct,varSetup)
+    modelFit(out_struct,varSetup)
 
      Generates fitted values from the model output and the model setup. Used for in-sample fit and for calculating residuals for the training sample.
 
      Arguments:
-        out_strct: A structure with the model output, including the store_β and YY matrices
+        out_struct: A structure with the model output, including the store_β and YY matrices
         varSetup: A structure with the model setup, including p and const_loc
 
      Returns:
         Yfit: The fitted values from the model
         Yact: The actual values from the data (YY)
 """
-function modelFit(out_strct,varSetup)
+function modelFit(out_struct,varSetup)
     @unpack p, const_loc = varSetup;
     if const_loc == 1
-        Y,X,T,n = BEAVARs.mlagL(out_strct.YY,p);
+        Y,X,T,n = BEAVARs.mlagL(out_struct.YY,p);
     elseif const_loc == 0
-        Y,X,T,n = BEAVARs.mlag(out_strct.YY,p);
+        Y,X,T,n = BEAVARs.mlag(out_struct.YY,p);
     end
-    Amed = reshape(percentile_mat(out_strct.store_β,0.5,dims=2),n*p+1,n)
+    Amed = reshape(percentile_mat(out_struct.store_β,0.5,dims=2),n*p+1,n)
     Yfit = X*Amed;
     Yact = @views Y
     return Yfit, Yact

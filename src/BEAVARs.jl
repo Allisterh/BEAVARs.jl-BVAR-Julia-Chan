@@ -23,7 +23,7 @@ export hypChan2020, hypBGR2010
 export beavar, beavars, makeOutput, makeSetup, makeHypSetup, makeDataSetup, LoopSetup
 
 # Structures, to be uncommented later
-# export BVARmodelSetup, BVARmodelOutput, Chan2020csv_type, Chan2020minn_type, BVARmodelHypSetup, hypDefault_strct, outChan2020csv, BVARModelType, VARSetup
+# export BVARmodelSetup, BVARmodelOutput, Chan2020csv_type, Chan2020minn_type, BVARmodelHypSetup, hypDefault_struct, outChan2020csv, BVARModelType, VARSetup
 
 
 
@@ -49,7 +49,7 @@ struct CPZ2023_type <: BVARmodelType end
 struct Blagov2025_type <: BVARmodelType end
 
 # Default structure for hyperparameters
-struct hypDefault_strct <: BVARmodelHypSetup end    # empty structure for initialising the hyperparameters
+struct hypDefault_struct <: BVARmodelHypSetup end    # empty structure for initialising the hyperparameters
 
 
 function selectModel(model_str::String)
@@ -112,7 +112,7 @@ end
 
 
 @doc raw"""
-    model_type, set_strct, hyp_strct = makeSetup(model_str::String; p::Int=4,n_burn::Int=1000,n_save::Int=1000,n_irf::Int=16,n_fcst::Int = 8,hyp::BVARmodelHypSetup=hypDefault_strct())
+    model_type, set_struct, hyp_struct = makeSetup(model_str::String; p::Int=4,n_burn::Int=1000,n_save::Int=1000,n_irf::Int=16,n_fcst::Int = 8,hyp::BVARmodelHypSetup=hypDefault_struct())
     
 Specify a model and generate structures for the Bayesian VAR and the hyperparameters.
 
@@ -129,28 +129,28 @@ Only the first argument is mandatory, rest is optional with default values.
 
 See also [`hypChan2020`](@ref), [`hypBGR2010`](@ref).
 """
-function makeSetup(model_str::String;p::Int=4,n_burn::Int=1000,n_save::Int=1000,n_irf::Int=16,n_fcst::Int = 8,hyp::BVARmodelHypSetup=hypDefault_strct())
+function makeSetup(model_str::String;p::Int=4,n_burn::Int=1000,n_save::Int=1000,n_irf::Int=16,n_fcst::Int = 8,hyp::BVARmodelHypSetup=hypDefault_struct())
     model_type = BEAVARs.selectModel(model_str)
     # checking if user supplied the hyperparameter structure
-    if isa(hyp,hypDefault_strct)                        # if not supplied, make a default one
-        hyp_strct = BEAVARs.makeHypSetup(model_type);   # println("using the default hyperparameters")
+    if isa(hyp,hypDefault_struct)                        # if not supplied, make a default one
+        hyp_struct = BEAVARs.makeHypSetup(model_type);   # println("using the default hyperparameters")
     else                                                # else use supplied    
-        hyp_strct = hyp; # println("using the supplied parameters")
+        hyp_struct = hyp; # println("using the supplied parameters")
     end
 
     intercept = BEAVARs.selectConstLoc(model_str);
     
-    set_strct = BEAVARs.VARSetup(p,n_burn,n_save,n_irf,n_fcst,intercept);
-    return model_type, set_strct, hyp_strct
+    set_struct = BEAVARs.VARSetup(p,n_burn,n_save,n_irf,n_fcst,intercept);
+    return model_type, set_struct, hyp_struct
 end
 
-function unpackLoopSetup(loop_strct::BVARmodelLoopSetup)
-    @unpack model, set, hyp, data,  = loop_strct 
+function unpackLoopSetup(loop_struct::BVARmodelLoopSetup)
+    @unpack model, set, hyp, data,  = loop_struct 
     model_type = model;
-    set_strct = set;
-    hyp_strct = hyp;
-    data_strct = data;
-    return model_type, set_strct, hyp_strct, data_strct
+    set_struct = set;
+    hyp_struct = hyp;
+    data_struct = data;
+    return model_type, set_struct, hyp_struct, data_struct
 end
 
 
@@ -193,12 +193,12 @@ include("plot_functions.jl")
 # The Den: this is where the beavars live
 #-------------------------------------
 
-function beavar(::Chan2020minn_type, set_strct, hyper_str, data_strct)
+function beavar(::Chan2020minn_type, set_struct, hyper_str, data_struct)
     println("Hello Minn")
-    YY = values(data_strct.data_tab);
-    store_β, store_Σ = Chan2020minn(YY,set_strct,hyper_str);
-    out_strct = VAROutput_Chan2020minn(store_β,store_Σ,YY)
-    return out_strct
+    YY = values(data_struct.data_tab);
+    store_β, store_Σ = Chan2020minn(YY,set_struct,hyper_str);
+    out_struct = VAROutput_Chan2020minn(store_β,store_Σ,YY)
+    return out_struct
 end
 
 
@@ -206,49 +206,49 @@ end
 @doc raw"""
     Main function for Chan2020csv
 """
-function beavar(::Chan2020csv_type, set_strct, hyper_str, data_strct)
-    YY = values(data_strct.data_tab);
-    store_β, store_h, store_Σ, s2_h_store, store_ρ, store_σ_h2, store_eh = Chan2020csv(YY,set_strct,hyper_str);
-    out_strct = VAROutput_Chan2020csv(store_β,store_Σ,store_h,s2_h_store, store_ρ, store_σ_h2, store_eh,YY)
-    return out_strct
+function beavar(::Chan2020csv_type, set_struct, hyper_str, data_struct)
+    YY = values(data_struct.data_tab);
+    store_β, store_h, store_Σ, s2_h_store, store_ρ, store_σ_h2, store_eh = Chan2020csv(YY,set_struct,hyper_str);
+    out_struct = VAROutput_Chan2020csv(store_β,store_Σ,store_h,s2_h_store, store_ρ, store_σ_h2, store_eh,YY)
+    return out_struct
 end
 
-function beavar(::Chan2020iniw_type, set_strct, hyper_str, data_strct)
+function beavar(::Chan2020iniw_type, set_struct, hyper_str, data_struct)
     println("Hello Independent Normal Inverse Wishart")
-    YY = values(data_strct.data_tab);
-    store_β, store_Σ = Chan2020iniw(YY,set_strct,hyper_str);
-    out_strct = VAROutput_Chan2020iniw(store_β,store_Σ,YY)
-    return out_strct
+    YY = values(data_struct.data_tab);
+    store_β, store_Σ = Chan2020iniw(YY,set_struct,hyper_str);
+    out_struct = VAROutput_Chan2020iniw(store_β,store_Σ,YY)
+    return out_struct
 end
 
 
-function beavar(::CPZ2023_type, set_strct, hyp_strct, data_strct)
+function beavar(::CPZ2023_type, set_struct, hyp_struct, data_struct)
     println("Hello CPZ2023")
-    @unpack dataHF_tab,dataLF_tab, aggMix, var_list = data_strct
-    store_YY,store_β, store_Σt_inv, M_zsp, z_vec, Sm_bit,store_Σt, freq_mix_tp = CPZ2023(dataHF_tab,dataLF_tab,var_list,set_strct,hyp_strct,aggMix);
-    out_strct = VAROutput_CPZ2023(store_β,store_Σt_inv,store_YY,M_zsp, z_vec, Sm_bit,store_Σt,var_list,freq_mix_tp);
-    return out_strct
+    @unpack dataHF_tab,dataLF_tab, aggMix, var_list = data_struct
+    store_YY,store_β, store_Σt_inv, M_zsp, z_vec, Sm_bit,store_Σt, freq_mix_tp = CPZ2023(dataHF_tab,dataLF_tab,var_list,set_struct,hyp_struct,aggMix);
+    out_struct = VAROutput_CPZ2023(store_β,store_Σt_inv,store_YY,M_zsp, z_vec, Sm_bit,store_Σt,var_list,freq_mix_tp);
+    return out_struct
 end
 
 
 @doc raw"""
     Main function for Blagov2025
 """
-function beavar(::Blagov2025_type, set_strct, hyp_strct, data_strct)
+function beavar(::Blagov2025_type, set_struct, hyp_struct, data_struct)
     println("Hello Blagov2025")
-    @unpack dataHF_tab,dataLF_tab, aggMix, var_list = data_strct
-    store_β, store_Σt_inv, store_YY, M_zsp, z_vec, Sm_bit, freq_mix_tp, store_Σt, store_h, store_s2_h, store_ρ, store_σ_h2, store_eh = Blagov2025(dataHF_tab,dataLF_tab,var_list,set_strct,hyp_strct,aggMix)    
-    out_strct = VAROutput_Blagov2025(store_β, store_Σt_inv, store_YY, M_zsp, z_vec, Sm_bit, freq_mix_tp, store_Σt, store_h, store_s2_h, store_ρ, store_σ_h2, store_eh)
-    return out_strct
+    @unpack dataHF_tab,dataLF_tab, aggMix, var_list = data_struct
+    store_β, store_Σt_inv, store_YY, M_zsp, z_vec, Sm_bit, freq_mix_tp, store_Σt, store_h, store_s2_h, store_ρ, store_σ_h2, store_eh = Blagov2025(dataHF_tab,dataLF_tab,var_list,set_struct,hyp_struct,aggMix)    
+    out_struct = VAROutput_Blagov2025(store_β, store_Σt_inv, store_YY, M_zsp, z_vec, Sm_bit, freq_mix_tp, store_Σt, store_h, store_s2_h, store_ρ, store_σ_h2, store_eh)
+    return out_struct
 end
 
 
-function beavar(::BGR2010_type, set_strct, hyp_strct, data_strct)
+function beavar(::BGR2010_type, set_struct, hyp_struct, data_struct)
     println("Hello BGR2010")
-    YY = values(data_strct.data_tab);
-    store_β, store_Σ = BGR2010(YY,set_strct,hyp_strct);
-    out_strct = VAROutput_BGR2010(store_β,store_Σ,YY);
-    return out_strct
+    YY = values(data_struct.data_tab);
+    store_β, store_Σ = BGR2010(YY,set_struct,hyp_struct);
+    out_struct = VAROutput_BGR2010(store_β,store_Σ,YY);
+    return out_struct
 end
 
 function beavars(vint_in_dict::ThreadSafeDict{String,BEAVARs.BVARmodelLoopSetup})
@@ -257,10 +257,10 @@ function beavars(vint_in_dict::ThreadSafeDict{String,BEAVARs.BVARmodelLoopSetup}
     for (index, value) in pairs(vint_in_dict)
         # println("$index $value")
         println("Estimating data vintage $index")
-        model_type, set_strct, hyp_strct, data_strct = BEAVARs.unpackLoopSetup(value);
-        out_strct = beavar(model_type, set_strct, hyp_strct, data_strct);
-        YYfcast3D_mat = BEAVARs.forecast(out_strct,set_strct);
-        vint_out_dict[index] = out_strct;
+        model_type, set_struct, hyp_struct, data_struct = BEAVARs.unpackLoopSetup(value);
+        out_struct = beavar(model_type, set_struct, hyp_struct, data_struct);
+        YYfcast3D_mat = BEAVARs.forecast(out_struct,set_struct);
+        vint_out_dict[index] = out_struct;
         fcast_out_dict[index] = YYfcast3D_mat;
     end
     
@@ -276,10 +276,10 @@ function beavars_multi(vint_in_dict::ThreadSafeDict{String,BEAVARs.BVARmodelLoop
         # println("$index $value")
         println("Estimating data vintage $index")
         value=vint_in_dict[index];
-        model_type, set_strct, hyp_strct, data_strct = BEAVARs.unpackLoopSetup(value);
-        out_strct = beavar(model_type, set_strct, hyp_strct, data_strct);
-        YYfcast3D_mat = BEAVARs.forecast(out_strct,set_strct);
-        vint_out_dict[index] = out_strct;
+        model_type, set_struct, hyp_struct, data_struct = BEAVARs.unpackLoopSetup(value);
+        out_struct = beavar(model_type, set_struct, hyp_struct, data_struct);
+        YYfcast3D_mat = BEAVARs.forecast(out_struct,set_struct);
+        vint_out_dict[index] = out_struct;
         fcast_out_dict[index] = YYfcast3D_mat;
     end
     
