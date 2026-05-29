@@ -93,19 +93,18 @@ Generates an M matrix such that `z = My + eps`. `y` is a vector of unobserved hi
 # TODO: add support for multiple z_tab variables
 """
 function CPZ_makeM_inter(z_tab,YYt,Sm_bit,datesHF,varNamesLF,fvarNames,freq_mix_tp,nm,Tf;scVal=10e-8)
-    
     z_var_pos  = indexin(varNamesLF,fvarNames); # positions of the variables in z
     if length(size(z_tab)) == 1
         T_z = size(z_tab,1)
         n_z = 1
     else
-        T_z, n_z = size(z_tab);  
+        T_z, n_z = size(z_tab);  # TODO this currently supports only a balanced panel of observed variables. E.g. you cannot have GDP but not have consumption
     end
     M_z = zeros(T_z*n_z,nm)
     z_vec = zeros(T_z*n_z,)
     iter = CartesianIndices(YYt)
     flagFirstRow = zeros(n_z,);                              # if we don't have a full quarter/year we will not be able to have a hard constraint in the beginning, set the error to a higher value
-
+    
     for ii_z = 1:n_z # iterator going through each variable in z_tab (along the columns)
         
         datesLF_ii = timestamp(z_tab[varNamesLF[ii_z]])
@@ -125,6 +124,7 @@ function CPZ_makeM_inter(z_tab,YYt,Sm_bit,datesHF,varNamesLF,fvarNames,freq_mix_
         # Intuitively, Q1 quarterly GDP (e.g. 01.01.2000) is the weighted sum of the monthly March, February, January, December, November, and October
         # if y_t^Q is 01.01.2000, we need +2 and -2 months for the weights
         if freq_mix_tp==(1,3,0)
+            # monthly and quarterly data with growth rates
             hfWeights = [1/3; 2/3; 3/3; 2/3; 1/3]; n_hfw = size(hfWeights,1); #number of weights, depends on the variable transformation and frequency
             hf_num1 = 1; hf_num2 = 1;  # this solves the range below ii_M-div((n_hfw-hf_num1),2): ii_M+div((n_hfw-hf_num2),2). This should give the indices -2, -1, 0, +1, +2
         elseif freq_mix_tp==(3,12,0)
@@ -132,9 +132,11 @@ function CPZ_makeM_inter(z_tab,YYt,Sm_bit,datesHF,varNamesLF,fvarNames,freq_mix_
             hfWeights = [1/4; 2/4; 3/4; 1; 3/4; 2/4; 1/4]; n_hfw = size(hfWeights,1); #number of weights, depends on the variable transformation and frequency
             hf_num1 = 1; hf_num2 = 1;  # this solves the range below ii_M-div((n_hfw-hf_num1),2): ii_M+div((n_hfw-hf_num2),2). This should give the indices -3, -2, -1, 0, +1, +2, +3
         elseif freq_mix_tp==(1,3,1)
+            # monthly and quarterly data in levels
             hfWeights = [1/3; 1/3; 1/3]; n_hfw = size(hfWeights,1); #number of weights, depends on the variable transformation and frequency
             hf_num1 = 3; hf_num2 = -1;  # this solves the range below ii_M-div((n_hfw-hf_num),2): ii_M+div((n_hfw-hf_num),2). This should give the indices -0, +1, +2
         elseif freq_mix_tp==(3,12,1)
+            # quarterly and yearly data in levels
             hfWeights = [1/4; 1/4; 1/4; 1/4]; n_hfw = size(hfWeights,1); #number of weights, depends on the variable transformation and frequency
             hf_num1 = 4; hf_num2 = -3;  # this solves the range below ii_M-div((n_hfw-hf_num),2): ii_M+div((n_hfw-hf_num),2). This should give the indices -0, +1, +2
         else
@@ -158,9 +160,11 @@ function CPZ_makeM_inter(z_tab,YYt,Sm_bit,datesHF,varNamesLF,fvarNames,freq_mix_
         z_vec[(ii_z-1)*T_z + 1:T_z + (ii_z-1)*T_z,]  = values(z_tab[varNamesLF[ii_z]]);
     end
     M_zsp = M_z;                        # Leftover from when trying sparse matrices, should be fixed by stacking the M_inter_ii
-    O_zsp = Matrix(I,T_z,T_z).*scVal;   # this works only if we have one z variable (with T_z length)
-    if flagFirstRow[1] == 1             # this here is only half-baked. We need to iterate over n_z variables and find their corresponding T_z lenghts
-        O_zsp[1,1] = scVal*1000
+    O_zsp = Matrix(I,T_z*n_z,T_z*n_z).*scVal;   # this works only if we have one z variable (with T_z length)
+    for ii = 1:n_z
+        if flagFirstRow[ii] == 1             
+            O_zsp[1+(ii-1)*T_z,1+(ii-1)*T_z] = scVal*1000   # add a higher value to the error for the first observation if we don't have a full quarter/year in the beginning, as we will not be able to have a hard constraint in the beginning
+        end
     end
     MOiM = M_zsp'*(O_zsp\M_zsp);
     MOiz = M_zsp'*(O_zsp\z_vec);
