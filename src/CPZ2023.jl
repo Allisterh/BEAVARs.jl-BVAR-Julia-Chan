@@ -669,40 +669,43 @@ function forecast(VAROutput::VAROutput_CPZ2023,VARSetup::BVARmodelSetup,data_str
 
     @unpack store_β, store_Σt, store_YY, M_inter_agg, fdatesHF, fdatesLF = VAROutput
     @unpack n_fcst,p,nsave = VARSetup
-    @unpack var_list = data_struct
+    @unpack dataHF_tab, dataLF_tab, var_list = data_struct
     YYforHF3d = store_YY;
     YYforLF3d = mapslices(x->M_inter_agg*x,store_YY,dims=1:2)
 
-
+    # Calculate the percentiles for the forecast distribution for the low frequency and high-frequency variables
     YforLF_low1 = percentile_mat(YYforLF3d,0.05,dims=3);
     YforLF_low = percentile_mat(YYforLF3d,0.16,dims=3);
     YforLF_med = percentile_mat(YYforLF3d,0.5,dims=3);
     YforLF_hih = percentile_mat(YYforLF3d,0.84,dims=3);
     YforLF_hih1 = percentile_mat(YYforLF3d,0.95,dims=3);
 
-    YYforLF_low1_tab = rename!(TimeArray(fdatesLF,YforLF_low1),var_list);
-    YYforLF_low_tab = rename!(TimeArray(fdatesLF,YforLF_low),var_list);
+    YYforLF_low05_tab = rename!(TimeArray(fdatesLF,YforLF_low1),var_list);
+    YYforLF_low16_tab = rename!(TimeArray(fdatesLF,YforLF_low),var_list);
     YYforLF_med_tab = rename!(TimeArray(fdatesLF,YforLF_med),var_list);
-    YYforLF_hih_tab = rename!(TimeArray(fdatesLF,YforLF_hih),var_list);
-    YYforLF_hih1_tab = rename!(TimeArray(fdatesLF,YforLF_hih1),var_list);
+    YYforLF_hih84_tab = rename!(TimeArray(fdatesLF,YforLF_hih),var_list);
+    YYforLF_hih95_tab = rename!(TimeArray(fdatesLF,YforLF_hih1),var_list);
 
-    YYforLF_struct = BEAVARs.data_fcast_PI(YYforLF_low1_tab, YYforLF_low_tab, YYforLF_med_tab, YYforLF_hih_tab, YYforLF_hih1_tab);
-
+    # now for the high-frequency variables
     YforHF_low1 = percentile_mat(YYforHF3d,0.05,dims=3);
     YforHF_low = percentile_mat(YYforHF3d,0.16,dims=3);
     YforHF_med = percentile_mat(YYforHF3d,0.5,dims=3);
     YforHF_hih = percentile_mat(YYforHF3d,0.84,dims=3);
     YforHF_hih1 = percentile_mat(YYforHF3d,0.95,dims=3);
 
-    YYforHF_low1_tab = rename!(TimeArray(fdatesHF,YforHF_low1),var_list);
-    YYforHF_low_tab = rename!(TimeArray(fdatesHF,YforHF_low),var_list);
+    YYforHF_low05_tab = rename!(TimeArray(fdatesHF,YforHF_low1),var_list);
+    YYforHF_low16_tab = rename!(TimeArray(fdatesHF,YforHF_low),var_list);
     YYforHF_med_tab = rename!(TimeArray(fdatesHF,YforHF_med),var_list);
-    YYforHF_hih_tab = rename!(TimeArray(fdatesHF,YforHF_hih),var_list);
-    YYforHF_hih1_tab = rename!(TimeArray(fdatesHF,YforHF_hih1),var_list);
+    YYforHF_hih84_tab = rename!(TimeArray(fdatesHF,YforHF_hih),var_list);
+    YYforHF_hih95_tab = rename!(TimeArray(fdatesHF,YforHF_hih1),var_list);
 
-    YYforHF_struct = BEAVARs.data_fcast_PI(YYforHF_low1_tab, YYforHF_low_tab, YYforHF_med_tab, YYforHF_hih_tab, YYforHF_hih1_tab);
+    # save them in a structure with [5%, 16%, 50%, 84%, 95%] probability intervals for each variable and each time point
+    YYforLF_struct = BEAVARs.data_fcast_PI(YYforLF_low05_tab, YYforLF_low16_tab, YYforLF_med_tab, YYforLF_hih84_tab, YYforLF_hih95_tab);
+    YYforHF_struct = BEAVARs.data_fcast_PI(YYforHF_low05_tab, YYforHF_low16_tab, YYforHF_med_tab, YYforHF_hih84_tab, YYforHF_hih95_tab);
 
-    fcast_struct = BEAVARs.VAR_MF_Forecast(YYforHF3d,YYforLF3d,data_struct.dataHF_tab,data_struct.dataLF_tab,var_list,n_fcst,YYforHF_struct,YYforLF_struct)    
+    data_flags_vec = fdatesLF .∈  Ref(timestamp(dataLF_tab));       # bit_vector showing the data position
+    forecast_flags_vec = .!data_flags_vec;                          # bit_vector showing the forecasted position. Only supports balanced z_tab #TODO: make it work for unbalanced z_tab
+    fcast_struct = BEAVARs.VAR_MF_Forecast(YYforHF3d,YYforLF3d,dataHF_tab,dataLF_tab,var_list,n_fcst,YYforHF_struct,YYforLF_struct,data_flags_vec,forecast_flags_vec)    
 
     return fcast_struct
 

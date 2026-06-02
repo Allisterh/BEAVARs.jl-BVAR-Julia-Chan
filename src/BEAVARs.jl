@@ -94,11 +94,11 @@ end
 
 # Structure to hold the median, 68% and 95% percentiles of the forecasts for a VAR
 @with_kw struct data_fcast_PI <: BVARmodelDataSetup
-    YYfor_low1_tab::TimeArray         
-    YYfor_low_tab::TimeArray         
+    YYfor_low05_tab::TimeArray         
+    YYfor_low16_tab::TimeArray         
     YYfor_med_tab::TimeArray         
-    YYfor_hih_tab::TimeArray
-    YYfor_hih1_tab::TimeArray
+    YYfor_hih84_tab::TimeArray
+    YYfor_hih95_tab::TimeArray
 end
 
 @with_kw struct VARSetup <: BVARmodelSetup
@@ -129,6 +129,8 @@ end
     n_fcst::Int                # number of forecast periods of the low-frequency variable
     YYforHF_struct::BVARmodelDataSetup     # structure with the percentiles of the forecasts for the high-frequency variables
     YYforLF_struct::BVARmodelDataSetup     # structure with the percentiles of the forecasts for the low-frequency variables
+    data_flags_vec::BitVector              # bit vector showing the position of the data in low-frequency in the output. Only supports balanced z_tab 
+    forecast_flags_vec::BitVector          # bit vector showing the position of the low-frequency forecasts in the output
 end
 
 
