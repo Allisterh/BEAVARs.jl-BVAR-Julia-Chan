@@ -1,7 +1,17 @@
 using BEAVARs
 using Test
+using TimeSeries
+using Parameters
+using LinearAlgebra, Statistics
 @testset "BEAVARs.jl" begin
     # Write your tests here.
-    TimeArray(DateTime(2020,1,1):Quarter(1):DateTime(2027,4,1),rand(30,3))
+    @test 1 == 1
+    @test true
+
+    @testset "testset_CPZ2023.jl" begin
+        include("testset_CPZ2023.jl")    
+    end
 end
+
+
 
