@@ -20,7 +20,7 @@ export irf_chol, irf_chol_overDraws, irf_chol_overDraws_csv
 
 export hypChan2020, hypBGR2010
 
-export beavar, beavars, makeOutput, makeSetup, makeHypSetup, makeDataSetup, LoopSetup
+export beavar, beavars, beavars_weave, makeOutput, makeSetup, makeHypSetup, makeDataSetup, LoopSetup
 
 # Structures, to be uncommented later
 # export BVARmodelSetup, BVARmodelOutput, Chan2020csv_type, Chan2020minn_type, BVARmodelHypSetup, hypDefault_struct, outChan2020csv, BVARModelType, VARSetup
