@@ -216,7 +216,25 @@ function Chan2020_drawβ(Σ_invsp,Xsur_den,XtΣ_inv_den,XtΣ_inv_X,Vβminn_inv,�
         K_β[:,:] .= Vβminn_inv .+ XtΣ_inv_X;            #  K_β = V^{-1} + X'*( I(T) ⊗ Σ^{-1} )*X
         prior_mean = Vβminn_inv*βminn;                  #  V^-1 * βminn 
         mul!(prior_mean,XtΣ_inv_den, vec(Y'),1.0,1.0);  # (V^-1_Minn * beta_Minn) + X' ( I(T) ⊗ Σ-1 ) y
-        cholK_β = cholesky(Hermitian(K_β));             # C is lower triangular, C' is upper triangular
+        cholK_β = cholesky!(Hermitian(K_β));             # C is lower triangular, C' is upper triangular
+        # println(@allocated cholK_β = cholesky(Hermitian(K_β)))
+        beta_hat = ldiv!(cholK_β.U,ldiv!(cholK_β.L,prior_mean));    # C'\(C*(V^-1_Minn * beta_Minn + X' ( I(T) ⊗ Σ-1 ) y)
+        beta = beta_hat + ldiv!(cholK_β.U,randn(k*n,)); # draw for β
+        return beta
+end
+
+
+"""
+    TODO try to write this function wihtout sparse matrices and consider using this one with three less allocations (but same MB :())
+"""
+function Chan2020_drawβ_nonsp(Σ_invsp,Xsur_den,XtΣ_inv_den,XtΣ_inv_X,Vβminn_inv,βminn,K_β,cholK_β,Y,n,k,prior_mean,beta_hat,beta)
+        mul!(XtΣ_inv_den,Xsur_den',Σ_invsp);            #  X'*( I(T) ⊗ Σ^{-1} )
+        mul!(XtΣ_inv_X,XtΣ_inv_den,Xsur_den);           #  X'*( I(T) ⊗ Σ^{-1} )*X
+        K_β[:,:] .= Vβminn_inv .+ XtΣ_inv_X;            #  K_β = V^{-1} + X'*( I(T) ⊗ Σ^{-1} )*X
+        # prior_mean = Vβminn_inv*βminn;                  #  V^-1 * βminn 
+        mul!(prior_mean,XtΣ_inv_den, vec(Y'),1.0,1.0);  # (V^-1_Minn * beta_Minn) + X' ( I(T) ⊗ Σ-1 ) y
+        cholK_β = cholesky!(Hermitian(K_β));             # C is lower triangular, C' is upper triangular
+        # println(@allocated cholesky!(Hermitian(K_β),cholK_β))
         beta_hat = ldiv!(cholK_β.U,ldiv!(cholK_β.L,prior_mean));    # C'\(C*(V^-1_Minn * beta_Minn + X' ( I(T) ⊗ Σ-1 ) y)
         beta = beta_hat + ldiv!(cholK_β.U,randn(k*n,)); # draw for β
         return beta
@@ -383,7 +401,7 @@ function init_Minn(YY,p)
     Y, X, T, n, intercept       = mlagL(YY,p);
     k                           = n*p+intercept
     sigmaP, betOLS              = ar4(YY);                       # do OLS to initialize priors
-    S_0                         = Diagonal(sigmaP);              
+    S_0                         = Diagonal(sigmaP);                         # initialize S_0
     Σt_inv                      = S_0\I;                                    # initialize Σ^-1              
     Vβ_inv                      = 1.0*Matrix(I,n*k,n*k);                    # prior matrix
     Vβ_inv_vecView              = @view(Vβ_inv[diagind(Vβ_inv)]);           # vector, element view, used to update the diagonal    

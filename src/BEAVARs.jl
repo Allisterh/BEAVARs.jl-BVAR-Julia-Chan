@@ -7,7 +7,8 @@ using   LinearAlgebra,
         ProgressMeter,
         XLSX,
         ThreadSafeDicts,
-        Plots
+        Plots,
+        Random
 
 # from init_functions.jl
 export mlag, mlagL, mlagL!, percentile_mat
