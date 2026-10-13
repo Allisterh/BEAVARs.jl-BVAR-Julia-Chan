@@ -116,7 +116,7 @@ function beavar(::Chan2020iniw_type, set_struct, hyp_str, data_struct)
     datesLF_fcast = collect(datesLF[end]+freqL_date:freqL_date:datesLF[end]+freqL_date*(set_struct.n_fcst));
     fdatesLF = [datesLF;datesLF_fcast];
     YY = values(data_struct.data_tab);
-    @time store_β, store_Σ = Chan2020iniw(YY,set_struct,hyp_str);
+    store_β, store_Σ = Chan2020iniw(YY,set_struct,hyp_str);
     out_struct = VAROutput_Chan2020iniw(store_β,store_Σ,YY,fdatesLF)
     return out_struct
 end

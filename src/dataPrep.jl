@@ -330,7 +330,7 @@ function make_vintages_dict_loop(file_path::String,model_cols_list::Array{String
         if typeof(model_type) <: BEAVARs.BVARmodelMFType
             dataHF_tab, dataLF_tab, varOrder = BEAVARs.readSpecMF(model_cols_list[ii],file_path);
             data_struct = makeDataSetup(model_type,dataHF_tab, dataLF_tab,var_list = varOrder)
-        elseif typeof(model_type) <: BEAVARs.BVARmodelOFType
+        elseif typeof(model_type) <: BEAVARs.BVARmodelSFType
             data_tab, varOrder = BEAVARs.readSpecOF(model_cols_list[ii],file_path);
             data_struct = makeDataSetup(model_type,data_tab,var_list = varOrder)
         end

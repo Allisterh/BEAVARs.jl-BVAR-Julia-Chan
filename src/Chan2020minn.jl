@@ -78,7 +78,7 @@ function Chan2020minn(YY::Array{Tp},set_struct::BVARmodelSetup,hyp_struct::BVARm
     β_hat = similar(priorMinn_struct.Vinvβ_prior)
     β_draw = similar(priorMinn_struct.Vinvβ_prior)
     β_rand = similar(priorMinn_struct.Vinvβ_prior)
-    β_hat_struct = BEAVARs.make_βdraw_struct(β_draw, β_hat, Xsur, XtΣ_inv_den, XtΣ_inv_X, Σ_invsp, K_β)
+    β_hat_struct = BEAVARs.make_βdraw_struct(β_draw, β_hat, β_rand, Xsur, XtΣ_inv_den, XtΣ_inv_X, Σ_invsp, K_β)
     cholK_β = BEAVARs.calc_β_hat!(priorMinn_struct,β_hat_struct,X,Y);
 
     ndraws = n_save+n_burn;
@@ -110,7 +110,7 @@ function beavar(::Chan2020minn_type, set_struct, hyp_str, data_struct)
     YY = data_mat;
     T,n = size(YY);
     store_YY = fill(NaN,(T+n_fcst,n,n_save))
-    @time store_β, store_Σ = Chan2020minn(YY,set_struct,hyp_str);
+    store_β, store_Σ = Chan2020minn(YY,set_struct,hyp_str);
     out_struct = VAROutput_Chan2020minn(store_β,store_Σ,YY,fdatesLF,store_YY);
     fcast_struct = forecast(out_struct, set_struct, data_struct);                   # TODO this has tremendous allocations, fix it
     out_struct.store_YY[:,:,:] =  @view fcast_struct.Yfor3d[:,:,:];

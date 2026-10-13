@@ -8,6 +8,7 @@ projects = ["test", "docs"]
 
 [deps]
 BlockArrays = "8e7c35d0-a365-5155-bbbb-fb81a777f24e"
+BlockBandedMatrices = "ffab5731-97b5-5995-9138-79e8c1846df0"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
@@ -29,6 +30,7 @@ XLSX = "fdbf4ff8-1666-58a4-91e7-1b58723a45e0"
 
 [compat]
 BlockArrays = "1.9.5"
+BlockBandedMatrices = "0.13.9"
 Dates = "1.11.0"
 Distributions = "0.25.118"
 JLD2 = "0.6.4"
@@ -46,4 +48,5 @@ StructArrays = "0.7.3"
 Tables = "1.12.1"
 ThreadSafeDicts = "0.1.6"
 TimeSeries = "0.26.0"
+XLSX = "0.13.1"
 julia = "1.12.6"

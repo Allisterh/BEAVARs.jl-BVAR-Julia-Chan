@@ -35,7 +35,7 @@ export beavar, beavars, beavars_weave, makeOutput, makeSetup, makeHypSetup, make
 # Types for multiple dispatch across models
 abstract type BVARmodelType end         # types for models
 abstract type BVARmodelMFType <: BVARmodelType end # a type cathing all mixed frequency models
-abstract type BVARmodelOFType <: BVARmodelType end # a type cathing all standard one frequency models
+abstract type BVARmodelSFType <: BVARmodelType end # a type cathing all single frequency models
 abstract type BVARmodelSetup end        # type for VAR setup parameters
 abstract type BVARmodelHypSetup end     # types for hyperparameters
 abstract type BVARmodelDataSetup end    # types for storing the data unputs to the models
@@ -46,11 +46,11 @@ abstract type BVARforecastOutput end    # type for forecast output storage
 
 
 # Structures for multiple dispatch across models
-struct Chan2020minn_type <: BVARmodelOFType end
-struct Chan2020iniw_type <: BVARmodelOFType end
-struct Chan2020iniw_type2 <: BVARmodelOFType end
-struct Chan2020csv_type <: BVARmodelOFType end
-struct BGR2010_type <: BVARmodelOFType end
+struct Chan2020minn_type <: BVARmodelSFType end
+struct Chan2020iniw_type <: BVARmodelSFType end
+struct Chan2020csv_type <: BVARmodelSFType end
+struct CCK2016csv_type <: BVARmodelSFType end
+struct BGR2010_type <: BVARmodelSFType end
 struct CPZ2023_type <: BVARmodelMFType end
 struct CPZ2023dev_type <: BVARmodelMFType end
 struct Blagov2025_type <: BVARmodelMFType end
@@ -61,12 +61,14 @@ struct hypDefault_struct <: BVARmodelHypSetup end    # empty structure for initi
 
 
 function selectModel(model_str::String)
-    if model_str == "Chan2020csv"
-        model_type = Chan2020csv_type()
-    elseif model_str == "Chan2020minn"
+    if model_str == "Chan2020minn"
         model_type = Chan2020minn_type()
     elseif model_str == "Chan2020iniw"
-        model_type = Chan2020iniw_type()
+        model_type = Chan2020iniw_type()        
+    elseif model_str == "Chan2020csv"
+        model_type = Chan2020csv_type()
+    elseif model_str == "CCK2016csv"
+        model_type = CCK2016csv_type()
     elseif model_str == "BGR2010"
         model_type = BGR2010_type()
     elseif model_str == "CPZ2023"
@@ -220,6 +222,8 @@ function selectConstLoc(model_str::String)
         const_loc = 1
     elseif model_str == "CPZ2023dev"
         const_loc = 1
+    elseif model_str == "CCK2016csv"
+        const_loc = 1
     elseif model_str == "Blagov2025"
         const_loc = 1
     elseif model_str == "Blagov2027"
@@ -242,6 +246,7 @@ include("Chan2020new_funcs.jl")
 include("Chan2020minn.jl")
 include("Chan2020iniw.jl")
 include("Chan2020csv.jl")
+include("CCK2016csv.jl")
 include("CPZ2023.jl")
 include("CPZ2023dev.jl")
 include("Blagov2025.jl")
