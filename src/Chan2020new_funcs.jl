@@ -266,6 +266,64 @@ function LinearAlgebra.mul!(
     return C
 end
 
+@doc raw"""
+    C = mul!(C, A::Adjoint{XSurFormMatrix}, B::AbstractBlockBandedMatrix; α=1.0, β=0.0)
+
+    Multiplies the adjoint SUR design matrix by a block-banded matrix whose row
+    and column blocks match the time-by-variable layout of the SUR design.
+
+    This function has been written by an LLM and has a testset that checks versus my own implementation
+"""
+function LinearAlgebra.mul!(
+    C::AbstractMatrix, At::Adjoint{<:Any,<:XSurFormMatrix},
+    B::BlockBandedMatrices.AbstractBlockBandedMatrix,
+    α::Number=one(eltype(C)), β::Number=zero(eltype(C)),
+)
+    A = parent(At)
+    T, k = size(A.X)
+    n = A.n
+    size(B) == (T*n, T*n) && size(C) == (k*n, T*n) ||
+        throw(DimensionMismatch("incompatible dimensions for XSurFormMatrix' * block-banded matrix"))
+    all(==(n), BlockArrays.blocklengths(axes(B, 1))) &&
+        all(==(n), BlockArrays.blocklengths(axes(B, 2))) ||
+        throw(DimensionMismatch("block sizes must match the number of variables in XSurFormMatrix"))
+
+    _scale_output!(C, β)
+    lower_bw, upper_bw = BlockBandedMatrices.blockbandwidths(B)
+
+    if iszero(lower_bw) && iszero(upper_bw) &&
+       B isa BlockBandedMatrices.BlockBandedMatrix &&
+       length(B.data) == T*n*n
+        # Dense diagonal blocks are stored contiguously in column-major order.
+        data = B.data
+        @inbounds for t in 1:T, q in 1:n, e in 1:n, j in 1:k
+            row = (e - 1)*k + j
+            col = (t - 1)*n + q
+            block_data_index = (t - 1)*n*n + (q - 1)*n + e
+            C[row, col] += α * conj(A.X[t, j]) * data[block_data_index]
+        end
+        return C
+    end
+
+    @inbounds for s in 1:T
+        firstcol = (s - 1)*n
+        for t in max(1, s - upper_bw):min(T, s + lower_bw)
+            for e in 1:n
+                firstrow = (e - 1)*k
+                for q in 1:n
+                    col = firstcol + q
+                    b_row = (t - 1)*n + e
+                    b_col = (s - 1)*n + q
+                    for j in 1:k
+                        C[firstrow + j, col] += α * conj(A.X[t, j]) * B[b_row, b_col]
+                    end
+                end
+            end
+        end
+    end
+    return C
+end
+
 
 @doc raw"""
     update_Xsur!(Xsur::XSurFormMatrix, Xnew::AbstractMatrix)
@@ -435,6 +493,7 @@ struct make_βdraw_struct{T <: AbstractFloat}
     XtΣ_inv_den::Array{T,2}         # 
     XtΣ_inv_X::Array{T,2}         # 
     Σ_inv_sp::SparseMatrixCSC{T,Int}  #
+    # Σ_inv_bb::BlockBandedMatrix{Float64}  #
     K_β::Array{T,2}             # 
 end
 

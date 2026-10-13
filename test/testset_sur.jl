@@ -1,4 +1,6 @@
 
+using BlockBandedMatrices, BlockArrays
+
 T = 228;
 n = 3;
 p = 4;
@@ -32,3 +34,23 @@ xvec = rand(k*n)
 yvec = rand(T*n)
 yvec_expected = 0.7 .* (Xsur_orig * xvec) .+ 0.2 .* yvec
 @test isapprox(mul!(yvec, Xsur, xvec, 0.7, 0.2), yvec_expected; atol=1e-12)
+
+@testset "adjoint SUR times block-banded matrix" begin
+    Bdiag = BlockBandedMatrix{Float64}(undef, fill(n, T), fill(n, T), (0, 0))
+    for t in 1:T
+        Bdiag[Block(t, t)] .= Σt_inv
+    end
+    product = Xsur_orig' * Matrix(Bdiag)
+    result = similar(product)
+    @test mul!(result, Xsur', Bdiag) ≈ product
+
+    initial = rand(size(result))
+    result .= initial
+    @test mul!(result, Xsur', Bdiag, 0.7, 0.2) ≈ 0.7 .* product .+ 0.2 .* initial
+
+    Bband = BlockBandedMatrix{Float64}(undef, fill(n, T), fill(n, T), (1, 0))
+    for s in 1:T, t in s:min(T, s + 1)
+        Bband[Block(t, s)] .= rand(n, n)
+    end
+    @test mul!(similar(product), Xsur', Bband) ≈ Xsur_orig' * Matrix(Bband)
+end

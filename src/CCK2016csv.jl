@@ -97,3 +97,50 @@ function init_Minn_csv(YY,set_struct,hyp_struct)
     # iniw_Σt_struct = BEAVARs.make_iniw_Σt_struct(Uvec,Σt,Σt_inv,S_0,hyp_struct.nu0)
     return Y, X, T, n, sigmaP_ar4, betaOLS_ar4, priorMinn_struct, β_hat_struct, iniw_Σt_struct, Σt_LI
 end
+
+@doc raw"""
+
+    BEAVARs.update_Σ_inv_bb!(Σ_inv_bb,Σt_inv)
+
+    Updates the block-banded matrix Σ_inv_bb with the Σt_inv across the block diagonal
+
+"""
+function update_Σ_inv_bb!(Σ_inv_bb,Σt_inv,T,n)
+    block_data = Σ_inv_bb.data
+    diagonal_block = vec(Σt_inv)
+    for ii in 1:T
+        copyto!(block_data, (ii - 1)*n*n + 1, diagonal_block, 1, n*n)
+    end
+end
+
+
+struct make_βdraw_struct_bb{T <: AbstractFloat}
+    β_draw::Array{T,1}        # final draw of β
+    β_hat::Array{T,1}         #  posterior mean of β
+    β_rand::Array{T,1}        # random draw
+    Xsur::XSurFormMatrix{T}         # 
+    XtΣ_inv_den::Array{T,2}         # 
+    XtΣ_inv_X::Array{T,2}         # 
+    # Σ_inv_sp::SparseMatrixCSC{T,Int}  #
+    Σ_inv_bb::BlockBandedMatrix{Float64}  #
+    K_β::Array{T,2}             # 
+end
+
+
+function Chan2020_draw_βsur_bb!(prior_struct,β_hat_struct,X,vecYt)
+    @unpack Xsur, XtΣ_inv_den, XtΣ_inv_X, Σ_inv_bb, K_β, β_hat, β_draw, β_rand  = β_hat_struct;
+    @unpack Vβ_vec, Vβ_inv, Vβ_inv_vecView, β_prior,Vinvβ_prior = prior_struct;
+    Vβ_inv_vecView[:] .= 1.0./Vβ_vec;                   # update the diagonal of Vβ_inv
+    update_Xsur!(Xsur, X);                              # update Xs                   
+    mul!(Vinvβ_prior, Vβ_inv, β_prior)                  #  update V^-1 * β_Minn 
+
+    mul!(XtΣ_inv_den,Xsur',Σ_inv_bb);                   #  X'*( I(T) ⊗ Σ^{-1} )
+    mul!(XtΣ_inv_X,XtΣ_inv_den,Xsur);
+    K_β .= Vβ_inv .+ XtΣ_inv_X;                         #  K_β = V^{-1} + X'*( I(T) ⊗ Σ^{-1} )*X
+    mul!(Vinvβ_prior,XtΣ_inv_den, vecYt,1.0,1.0);     # (V^-1_Minn * beta_Minn) + X' ( I(T) ⊗ Σ-1 ) y
+
+    cholK_β = cholesky(Hermitian(K_β));                # Cholesky factor
+    β_hat[:] = ldiv!(cholK_β.U,ldiv!(cholK_β.U',Vinvβ_prior));    # C'\(C*(V^-1_Minn * beta_Minn + X' ( I(T) ⊗ Σ-1 ) y)
+    randn!(β_rand)
+    β_draw[:] .= β_hat .+ ldiv!(cholK_β.U,β_rand); # draw for β
+end

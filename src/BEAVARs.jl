@@ -2,6 +2,8 @@ module BEAVARs
 using   LinearAlgebra, 
         Distributions, 
         SparseArrays,
+        BlockBandedMatrices,
+        BlockArrays,
         TimeSeries, 
         Parameters,
         ProgressMeter,
@@ -377,4 +379,3 @@ end
 #-------------------------------------
 end # END OF MODULE
 #-------------------------------------
-
