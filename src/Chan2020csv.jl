@@ -243,8 +243,6 @@ function Chan2020_draw_h!(h,s2_h,ρ,σ_h2,n,H_ρ,T)
         h[:,] = hc[:,]; 
         accept = true;
     end
-
-    return h
 end # end draw_h_csv!
 
 function Chan2020_draw_ρ!(ρ,h,eh,v_h0,S_h0,ρ_0,V_ρ,T)

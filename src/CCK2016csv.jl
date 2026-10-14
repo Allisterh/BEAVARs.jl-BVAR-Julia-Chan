@@ -73,6 +73,7 @@ end
 """
 function init_Minn_csv(YY,set_struct,hyp_struct)
     @unpack p = set_struct;
+    @unpack ρ = hyp_struct;
     if set_struct.const_loc == 1
         # will err if false, on purpose to catch if we define the constant wrong.
         Y, X, T, n, intercept       = mlagL(YY,p);
@@ -80,9 +81,11 @@ function init_Minn_csv(YY,set_struct,hyp_struct)
     sigmaP_ar4, betaOLS_ar4     = ar4(YY);                                  # do OLS to initialize priors as in CCK2016
     k                           = n*p+intercept
     h                           = zeros(T,);                                # stochastic volatilities
-    S_0                         = diagm(sigmaP);                            # initialize S_0
+    expmh                       = exp.(-h);
+    S_0                         = diagm(sigmaP_ar4);                            # initialize S_0
     Σt_inv                      = S_0\I;                                    # initialize Σ^-1   
-    Σ_invsp, Σt_LI              = BEAVARs.makeBlkDiag(T*n,n,0,Σt_inv);      # I(T) ⊗ Σ-1 and its indices for update
+    # Σ_inv_sp, Σt_LI              = BEAVARs.makeBlkDiag(T*n,n,0,Σt_inv);      # I(T) ⊗ Σ-1 and its indices for update
+    Σ_inv_bb                    = BlockBandedMatrix{Float64}(undef,ones(Int,T,).*n, ones(Int,T,).*n, (0, 0))
     XtΣ_inv_den                 = zeros(k*n,T*n);                           # will be X' ( I(T) ⊗ Σ-1 )   from page 6 in Chan 2020 LBA
     XtΣ_inv_X                   = zeros(n*k,n*k);                           # will be X' ( I(T) ⊗ Σ-1 ) X from page 6 in Chan 2020 LBA    
     Xsur                        = BEAVARs.XSurFormMatrix(X,n);              # prepares the SUR form and the indices of the parameters for updating
@@ -90,13 +93,33 @@ function init_Minn_csv(YY,set_struct,hyp_struct)
     
     priorMinn_struct = BEAVARs.init_priorMinn(n,p,sigmaP_ar4,set_struct.prior_RW,hyp_struct)
 
-    β_hat_struct = BEAVARs.make_βdraw_struct(similar(priorMinn_struct.Vinvβ_prior),similar(priorMinn_struct.Vinvβ_prior),similar(priorMinn_struct.Vinvβ_prior), Xsur, XtΣ_inv_den, XtΣ_inv_X, Σ_invsp, K_β)
+    β_hat_struct = BEAVARs.make_βdraw_bb_struct(similar(priorMinn_struct.Vinvβ_prior),similar(priorMinn_struct.Vinvβ_prior),similar(priorMinn_struct.Vinvβ_prior), Xsur, XtΣ_inv_den, XtΣ_inv_X, Σ_inv_bb, K_β)
 
     Uvec = similar(vec(Y'))
     Σt   = similar(S_0)
-    # iniw_Σt_struct = BEAVARs.make_iniw_Σt_struct(Uvec,Σt,Σt_inv,S_0,hyp_struct.nu0)
-    return Y, X, T, n, sigmaP_ar4, betaOLS_ar4, priorMinn_struct, β_hat_struct, iniw_Σt_struct, Σt_LI
+    csv_Σt_struct = BEAVARs.make_csv_Σt_struct(Uvec,Σt,Σt_inv,S_0,hyp_struct.nu0,hyp_struct.nu0+T+n)
+
+    csv_h_struct = init_csv_struct(h,hyp_struct,T)
+    return Y, X, T, n, sigmaP_ar4, betaOLS_ar4, priorMinn_struct, β_hat_struct, csv_Σt_struct, csv_h_struct
 end
+
+
+@doc raw"""
+    CCK2016_drawΣtsur(vecYt,β_hat_struct,iniw_Σt_struct,n,T)
+
+    Draw Σt matrix and calculates its inverse using an Inverse Wishart distribution.
+"""
+function CCK20160_drawΣtsur!(vecYt,β_hat_struct,csv_Σt_struct,csv_h_struct,n,T)
+    @unpack Uvec, Σt, Σt_inv, S_0, nu0 = csv_Σt_struct
+    @unpack s2_h = csv_h_struct
+    Uvec .= vecYt .- mul!(Uvec,β_hat_struct.Xsur,β_hat_struct.β_draw) 
+    U = reshape(Uvec,n,T);   
+    BEAVARs.fast_triple_product!(Σt, U, csv_h_struct.expmh);                   # store U*Diagonal(exp.(-h)*U' + S_0 in Σt
+    Σt .= rand(InverseWishart(csv_Σt_struct.iw_df, Σt .+ csv_Σt_struct.S_0));    # draw for Σ
+    Σt_inv .= Σt\I;
+    s2_h .= sum((U'*cholesky(Σt).U).^2,dims=2);
+end
+
 
 @doc raw"""
 
@@ -105,42 +128,171 @@ end
     Updates the block-banded matrix Σ_inv_bb with the Σt_inv across the block diagonal
 
 """
-function update_Σ_inv_bb!(Σ_inv_bb,Σt_inv,T,n)
-    block_data = Σ_inv_bb.data
+function update_Σ_inv_bb!(β_hat_bb_struct,csv_Σt_struct,csv_h_struct,T,n)
+    @unpack Σ_inv_bb = β_hat_bb_struct
+    @unpack Σt_inv = csv_Σt_struct
+    @unpack expmh = csv_h_struct
+    # block_data = Σ_inv_bb.data
     diagonal_block = vec(Σt_inv)
     for ii in 1:T
-        copyto!(block_data, (ii - 1)*n*n + 1, diagonal_block, 1, n*n)
+        copyto!(Σ_inv_bb.data, (ii - 1)*n*n + 1, diagonal_block.*expmh[ii], 1, n*n)
     end
 end
 
 
-struct make_βdraw_struct_bb{T <: AbstractFloat}
+struct make_βdraw_bb_struct{T <: AbstractFloat}
     β_draw::Array{T,1}        # final draw of β
     β_hat::Array{T,1}         #  posterior mean of β
     β_rand::Array{T,1}        # random draw
     Xsur::XSurFormMatrix{T}         # 
     XtΣ_inv_den::Array{T,2}         # 
     XtΣ_inv_X::Array{T,2}         # 
-    # Σ_inv_sp::SparseMatrixCSC{T,Int}  #
     Σ_inv_bb::BlockBandedMatrix{Float64}  #
     K_β::Array{T,2}             # 
 end
 
 
-function Chan2020_draw_βsur_bb!(prior_struct,β_hat_struct,X,vecYt)
-    @unpack Xsur, XtΣ_inv_den, XtΣ_inv_X, Σ_inv_bb, K_β, β_hat, β_draw, β_rand  = β_hat_struct;
-    @unpack Vβ_vec, Vβ_inv, Vβ_inv_vecView, β_prior,Vinvβ_prior = prior_struct;
-    Vβ_inv_vecView[:] .= 1.0./Vβ_vec;                   # update the diagonal of Vβ_inv
-    update_Xsur!(Xsur, X);                              # update Xs                   
-    mul!(Vinvβ_prior, Vβ_inv, β_prior)                  #  update V^-1 * β_Minn 
 
-    mul!(XtΣ_inv_den,Xsur',Σ_inv_bb);                   #  X'*( I(T) ⊗ Σ^{-1} )
-    mul!(XtΣ_inv_X,XtΣ_inv_den,Xsur);
-    K_β .= Vβ_inv .+ XtΣ_inv_X;                         #  K_β = V^{-1} + X'*( I(T) ⊗ Σ^{-1} )*X
-    mul!(Vinvβ_prior,XtΣ_inv_den, vecYt,1.0,1.0);     # (V^-1_Minn * beta_Minn) + X' ( I(T) ⊗ Σ-1 ) y
-
-    cholK_β = cholesky(Hermitian(K_β));                # Cholesky factor
-    β_hat[:] = ldiv!(cholK_β.U,ldiv!(cholK_β.U',Vinvβ_prior));    # C'\(C*(V^-1_Minn * beta_Minn + X' ( I(T) ⊗ Σ-1 ) y)
-    randn!(β_rand)
-    β_draw[:] .= β_hat .+ ldiv!(cholK_β.U,β_rand); # draw for β
+struct make_csv_h_struct{T <: AbstractFloat}
+    h::Array{T,1}
+    expmh::Array{T,1}
+    ht::Array{T,1}
+    eht::Array{T,1}
+    new_ht::Array{T,1}
+    sieht::Array{T,1}
+    G_h::Array{T,1}
+    f_h::Array{T,1}
+    s2_h::Array{T,1}
+    eh::Array{T,1}
+    H_ρ::SparseMatrixCSC{T,Int}
+    ρ_vec::Array{T,1}
+    σ_h2_vec::Array{T,1}
+    K_h::SparseMatrixCSC{T,Int}
 end
+
+
+struct make_csv_Σt_struct{T <: AbstractFloat}
+    Uvec::Array{T,1}
+    Σt::Array{T,2}
+    Σt_inv::Array{T,2}
+    S_0::Array{T,2}
+    nu0::Int
+    iw_df::Int             # degrees of freedom for the inverse Wishart
+end
+
+function init_csv_struct(h,hyp_struct,T)
+    @unpack ρ, σ_h2, v_h0, S_h0, ρ_0, V_ρ = hyp_struct
+    ρ_vec = zeros(1,); σ_h2_vec = zeros(1,);
+    ρ_vec[1]=ρ;
+    σ_h2_vec[1] = σ_h2;
+    H_ρ = sparse(Matrix(1.0I, T, T)) - sparse(ρ*diagm(-1=>repeat(1:1,T-1)));
+    H_inv = H_ρ'*(Diagonal([(1.0-ρ^2)/σ_h2; 1.0/σ_h2*ones(T-1,)]))*H_ρ;
+    K_h = similar(H_inv);
+    csv_h_struct = BEAVARs.make_csv_h_struct(h,exp.(-h),similar(h),similar(h),similar(h),similar(h),similar(h),similar(h),similar(h),similar(h),H_ρ,ρ_vec,σ_h2_vec,K_h)
+    return csv_h_struct
+end
+
+
+"""
+    fast_triple_product!(C, U, dv)
+
+    Calculates U*Diagonal(dv)*U' without allocations and stores it in C
+"""
+function fast_triple_product!(C, U, dv)
+    m, n = size(U) # m = 10, n = 76
+    
+    for j in 1:m
+        for i in 1:j
+            val = zero(eltype(C))
+            @inbounds @simd for k in 1:n                
+                val += U[i, k] * dv[k] * U[j, k] # Essentially C[i,j] = ∑ (U[i,k] * dv[k] * U[j,k])
+            end
+            C[i, j] = val
+            C[j, i] = val # Exploit symmetry to save half the work
+        end
+    end
+    return C
+end
+
+
+
+
+
+function csv_draw_h_ρ!(csv_h_struct, n,T,hyp_struct)
+    @unpack v_h0, S_h0, ρ_0, V_ρ = hyp_struct
+    @unpack h, expmh, ht, eht, new_ht, sieht, G_h, f_h, s2_h, eh, H_ρ, ρ_vec,σ_h2_vec, K_h = csv_h_struct
+    accept = false;
+    ρ = ρ_vec[1]; 
+    σ_h2 = σ_h2_vec[1];
+    # H_ρ[diagind(H_ρ,-1)]=fill(-ρ,T-1);
+    H_ρ.nzval[2:2:end].=-ρ;
+    H_inv = H_ρ'*(Diagonal([(1.0-ρ^2)/σ_h2; 1.0/σ_h2*ones(T-1,)]))*H_ρ;
+    ϵ_h = 1.0;
+    ht .= h; 
+    
+    while ϵ_h > 10^(-3)
+        eht .= exp.(ht)
+        sieht .= s2_h[:,]./eht
+        G_h .= 0.5*sieht
+        f_h .= -n*0.5 .+ G_h;
+        K_h .= H_inv .+ Diagonal(G_h);
+        new_ht .= K_h\(f_h + G_h.*ht)
+        ϵ_h = maximum(abs.(new_ht-ht))
+        ht[:,] = new_ht[:,]
+    end
+
+    C_K_h = cholesky(K_h)
+    
+    hstar = similar(ht)
+    hstar .= ht
+    logc = -0.5*hstar'*H_inv*hstar - 0.5*n*sum(hstar) .- 0.5*exp.(-hstar)'*s2_h[:,] .+ log(3)
+    
+    flag = false
+    hc = similar(h)
+    alpARc = 0.0;
+    while flag == 0
+        hc = ht + C_K_h.U\randn(T,);        
+        alpARc = -0.5*hc'*H_inv*hc .- (0.5*n)*sum(hc,dims=1)[1] .- 0.5*exp.(-hc)'*s2_h[:,] .+ 0.5*(hc-ht)'*K_h*(hc-ht) .- logc;
+        
+        if alpARc > log(rand())
+            flag = true;
+        end
+    end        
+    alpAR = -0.5*h'*H_inv*h .- (0.5*n)*sum(h) .- 0.5*exp.(-h)'*s2_h[:,] .+ 0.5*(h-ht)'*K_h*(h-ht) .- logc;
+    if alpAR < 0
+        alpMH = 1.0;
+    elseif alpARc < 0
+        alpMH = - alpAR;
+    else
+        alpMH = alpARc - alpAR;
+    end    
+    if alpMH > log(rand())
+        h[:,] = hc[:,]; 
+        accept = true;
+    end
+
+    # update exp.(-h)
+    expmh .= exp.(-h);
+
+    # draw ρ and σ_h2
+    eh[1,] = h[1]*sqrt(1.0-ρ^2);
+    eh[2:end,] = h[2:end,].-ρ.*h[1:end-1,]
+    σ_h2 = 1.0./rand(Gamma(v_h0+T/2.0, 1.0/( S_h0 + sum(eh.^2)./2.0 ) ) )
+
+    K_rho = 1.0/V_ρ + sum(h[1:T-1,].^2)./σ_h2;
+    ρ_hat = K_rho\(ρ_0/V_ρ + h[1:T-1,]'*h[2:T,]./σ_h2);
+    ρ_c = ρ_hat + sqrt(K_rho)\randn();
+
+    g_ρ(x) = -0.5*log(σ_h2./(1.0-x.^2))-0.5*(1.0-x.^2)/σ_h2*h[1]^2;
+    if abs(ρ_c)<.999
+        alpMH = exp(g_ρ(ρ_c)-g_ρ(ρ));
+        if alpMH>rand()
+            ρ = ρ_c;            
+        end
+    end    
+
+    # update ρ
+    # ρ_vec[1] = ρ;
+    # σ_h2_vec[1] = σ_h2;
+
+end 
