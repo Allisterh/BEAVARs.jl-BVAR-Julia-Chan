@@ -494,10 +494,10 @@ function Chan2020_draw_βsur_bb!(prior_struct,β_hat_struct,X,vecYt)
 
     mul!(XtΣ_inv_den,Xsur',Σ_inv_bb);                   #  X'*( I(T) ⊗ Σ^{-1} )
     mul!(XtΣ_inv_X,XtΣ_inv_den,Xsur);
-    K_β .= Vβ_inv .+ XtΣ_inv_X;                         #  K_β = V^{-1} + X'*( I(T) ⊗ Σ^{-1} )*X
+    K_β .= Vβ_inv .+ XtΣ_inv_X;                         #  K_β = V^{-1} + X'*( I(T) ⊗ Σ-1 )*X
     mul!(Vinvβ_prior,XtΣ_inv_den, vecYt,1.0,1.0);     # (V^-1_Minn * beta_Minn) + X' ( I(T) ⊗ Σ-1 ) y
 
-    cholK_β = cholesky(Hermitian(K_β));                # Cholesky factor
+    cholK_β = cholesky!(Hermitian(K_β));                # Cholesky factor
     β_hat[:] = ldiv!(cholK_β.U,ldiv!(cholK_β.U',Vinvβ_prior));    # C'\(C*(V^-1_Minn * beta_Minn + X' ( I(T) ⊗ Σ-1 ) y)
     randn!(β_rand)
     β_draw[:] .= β_hat .+ ldiv!(cholK_β.U,β_rand); # draw for β

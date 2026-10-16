@@ -39,15 +39,15 @@ end
 #-------------------------------------
 
 function beavar(::CCK2016csv_type, set_struct, hyp_str, data_struct)
-    println("Hello Independent Normal Inverse Wishart")
+    println("Hello CCK")
     @unpack data_tab, data_mat, var_list = data_struct;
     freqL_date = BEAVARs.get_data_freq(data_tab);
     datesLF = timestamp(data_tab);
     datesLF_fcast = collect(datesLF[end]+freqL_date:freqL_date:datesLF[end]+freqL_date*(set_struct.n_fcst));
     fdatesLF = [datesLF;datesLF_fcast];
     YY = values(data_struct.data_tab);
-    store_β, store_Σ = Chan2020iniw(YY,set_struct,hyp_str);
-    out_struct = VAROutput_Chan2020iniw(store_β,store_Σ,YY,fdatesLF)
+    store_β, store_Σ = BEAVARs.CCK2016csv(YY,set_struct,hyp_str);
+    out_struct = VAROutput_Chan2020csv(store_β,store_Σ,YY,fdatesLF)
     return out_struct
 end
 
@@ -109,7 +109,7 @@ end
 
     Draw Σt matrix and calculates its inverse using an Inverse Wishart distribution.
 """
-function CCK20160_drawΣtsur!(vecYt,β_hat_struct,csv_Σt_struct,csv_h_struct,n,T)
+function CCK2016_drawΣtsur!(vecYt,β_hat_struct,csv_Σt_struct,csv_h_struct,n,T)
     @unpack Uvec, Σt, Σt_inv, S_0, nu0 = csv_Σt_struct
     @unpack s2_h = csv_h_struct
     Uvec .= vecYt .- mul!(Uvec,β_hat_struct.Xsur,β_hat_struct.β_draw) 
@@ -117,7 +117,7 @@ function CCK20160_drawΣtsur!(vecYt,β_hat_struct,csv_Σt_struct,csv_h_struct,n,
     BEAVARs.fast_triple_product!(Σt, U, csv_h_struct.expmh);                   # store U*Diagonal(exp.(-h)*U' + S_0 in Σt
     Σt .= rand(InverseWishart(csv_Σt_struct.iw_df, Σt .+ csv_Σt_struct.S_0));    # draw for Σ
     Σt_inv .= Σt\I;
-    s2_h .= sum((U'*cholesky(Σt).U).^2,dims=2);
+    s2_h .= sum((U'/cholesky(Σt).U).^2,dims=2);
 end
 
 
@@ -292,7 +292,47 @@ function csv_draw_h_ρ!(csv_h_struct, n,T,hyp_struct)
     end    
 
     # update ρ
-    # ρ_vec[1] = ρ;
-    # σ_h2_vec[1] = σ_h2;
+    ρ_vec[1] = ρ;
+    σ_h2_vec[1] = σ_h2;
 
+end 
+
+
+
+function CCK2016csv(YY::Array{Float64},set_struct::BVARmodelSetup,hyp_struct::BVARmodelHypSetup)
+    # @unpack ρ, σ_h2, v_h0, S_h0, ρ_0, V_ρ = hyp_struct
+    @unpack p, n_save, n_burn, prior_RW = set_struct
+
+    @unpack p,n_burn,n_save, prior_RW = set_struct
+    n_draws  = n_save+n_burn;
+
+
+    Y, X, T, n, sigmaP_ar4, betaOLS_ar4, priorMinn_struct, β_hat_bb_struct, csv_Σt_struct, csv_h_struct = BEAVARs.init_Minn_csv(YY,set_struct,hyp_struct)
+    vecYt = vec(Y')
+    
+    store_β = zeros(n^2*p+n,n_save);
+    store_Σ = zeros(n,n,n_save);
+    store_h = zeros(T,n_save);
+    store_s2_h = zeros(T,n_save);
+    store_ρ = zeros(n_save,);
+    store_σ_h2 = zeros(n_save,); 
+    store_eh = zeros(T,n_save);
+    
+    for ii = 1:n_draws 
+        BEAVARs.update_Σ_inv_bb!(β_hat_bb_struct,csv_Σt_struct,csv_h_struct,T,n);
+        BEAVARs.Chan2020_draw_βsur_bb!(priorMinn_struct,β_hat_bb_struct,X,vecYt);
+        BEAVARs.CCK2016_drawΣtsur!(vecYt,β_hat_bb_struct,csv_Σt_struct,csv_h_struct,n,T);
+        BEAVARs.csv_draw_h_ρ!(csv_h_struct, n,T,hyp_struct); 
+
+        if ii>n_burn
+            store_β[:,ii-n_burn] = β_hat_bb_struct.β_draw;
+            store_Σ[:,:,ii-n_burn] = csv_Σt_struct.Σt;
+            store_h[:,ii-n_burn] = csv_h_struct.h;
+            store_s2_h[:,ii-n_burn] = csv_h_struct.s2_h;
+            store_ρ[ii-n_burn,] = csv_h_struct.ρ_vec[1];
+            store_σ_h2[ii-n_burn,] = csv_h_struct.σ_h2_vec[1];
+            store_eh[:,ii-n_burn] = csv_h_struct.eh;
+        end
+    end
+    return store_β, store_h, store_Σ, store_s2_h, store_ρ, store_σ_h2, store_eh
 end 
