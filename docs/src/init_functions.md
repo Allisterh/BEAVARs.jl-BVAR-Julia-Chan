@@ -12,6 +12,6 @@ mlag(Yfull::Matrix{Float64},p::Integer)
 BEAVARs.trainPriors(Z0::Matrix{Float64},p::Int64)
 ```
 
-```@percentile_mat
+```@docs
 percentile_mat(A, p; dims)
 ```

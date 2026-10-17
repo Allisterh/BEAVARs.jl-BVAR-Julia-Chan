@@ -221,7 +221,7 @@ end
     percentile_mat(A, p; dims) 
 
 Calculates percentiles in a matrix across a specific dimension. Taken from https://github.com/JuliaStats/Statistics.jl/issues/23
-and written by [https://github.com/holomorphism](holomorphism). I couldn't find such a function in Julia
+and written by [holomorphism](https://github.com/holomorphism). I couldn't find such a function in Julia
 
 """
 function percentile_mat(A, p; dims) 

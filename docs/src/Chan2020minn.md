@@ -1,4 +1,5 @@
-# Chan2020minn
+# Minnesota prior
+
 
 Consider a normal prior for the vector of coefficients $\boldsymbol{\beta}$.
 

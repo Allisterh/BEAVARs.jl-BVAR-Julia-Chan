@@ -38,31 +38,39 @@ end
 # The Den of the beavar
 #-------------------------------------
 
+@doc raw"""
+    beavar(::CCK2016csv_type, set_struct, hyp_str, data_struct)
+
+    Estimates a BVAR with common stochastic volatility as proposed by Carriero, Clark, and Marcellino (2016). 
+
+    The implementation of csv follows Chan (2020) and draws `h`, the stochastic volatility, using a Newton Rapson method and not the CCK article with Shephard and Chib's 1998 method.
+
+"""
 function beavar(::CCK2016csv_type, set_struct, hyp_str, data_struct)
-    println("Hello CCK")
+    println("Hello CCK2016csv")
     @unpack data_tab, data_mat, var_list = data_struct;
     freqL_date = BEAVARs.get_data_freq(data_tab);
     datesLF = timestamp(data_tab);
     datesLF_fcast = collect(datesLF[end]+freqL_date:freqL_date:datesLF[end]+freqL_date*(set_struct.n_fcst));
     fdatesLF = [datesLF;datesLF_fcast];
     YY = values(data_struct.data_tab);
-    store_β, store_Σ = BEAVARs.CCK2016csv(YY,set_struct,hyp_str);
-    out_struct = VAROutput_Chan2020csv(store_β,store_Σ,YY,fdatesLF)
+    store_β,store_Σ,store_h,store_s2_h, store_ρ, store_σ_h2, store_eh = BEAVARs.CCK2016csv(YY,set_struct,hyp_str);
+    out_struct = VAROutput_CCK2016csv(store_β,store_Σ,store_h,store_s2_h, store_ρ, store_σ_h2, store_eh,YY)
     return out_struct
 end
 
 
 
 
-@with_kw struct VAROutput_CCK2016csv <: BVARmodelOutput
-    store_β::Array{}        # 
-    store_Σ::Array{}        # 
-    store_h::Array{}        # 
-    s2_h_store::Array{}     # 
-    store_ρ::Array{}        # 
-    store_σ_h2::Array{}     # 
-    store_eh::Array{}       #
-    YY::Array{}             #
+struct VAROutput_CCK2016csv{T <: AbstractFloat} <: BVARmodelOutput
+    store_β::Array{T,2}        # 
+    store_Σ::Array{T,3}        # 
+    store_h::Array{T,2}        # 
+    store_s2_h::Array{T,2}     # 
+    store_ρ::Array{T,1}        # 
+    store_σ_h2::Array{T,1}     # 
+    store_eh::Array{T,2}       #
+    YY::Array{T,2}             #
 end
 
 
@@ -334,5 +342,43 @@ function CCK2016csv(YY::Array{Float64},set_struct::BVARmodelSetup,hyp_struct::BV
             store_eh[:,ii-n_burn] = csv_h_struct.eh;
         end
     end
-    return store_β, store_h, store_Σ, store_s2_h, store_ρ, store_σ_h2, store_eh
+    return store_β, store_Σ, store_h, store_s2_h, store_ρ, store_σ_h2, store_eh
 end 
+
+
+
+"""
+    
+"""
+function forecast(VAROutput::VAROutput_CCK2016csv,set_struct)
+    @unpack store_β, store_Σ, store_h, store_s2_h, store_ρ, store_σ_h2,store_eh, YY = VAROutput
+    @unpack n_fcst,p,n_save = set_struct
+    n = size(YY,2);
+
+    Yfor3D    = fill(NaN,(p+n_fcst,n,n_save))
+    hfor3D    = fill(NaN,(p+n_fcst,n_save)); 
+    
+    
+    Yfor3D[1:p,:,:] .= @views YY[end-p+1:end,:];
+    hfor3D[1:p,:] = @views store_h[end-p+1:end,:];
+    
+    for i_draw = 1:n_save
+    
+        hfor = @views hfor3D[:,i_draw];
+        Yfor = @views Yfor3D[:,:,i_draw];
+        A_draw = @views reshape(store_β[:,i_draw],n*p+1,n);
+        ρ_draw = @view store_ρ[i_draw];
+        σ_h2_draw = @views store_σ_h2[i_draw];
+        Σ_draw = @views store_Σ[:,:,i_draw];
+                
+        for i_for = 1:n_fcst
+            hfor[p+i_for,] = ρ_draw.*hfor[p+i_for-1,] + sqrt(σ_h2_draw).*randn()
+            tclass = @views vec(reverse(Yfor[1+i_for-1:p+i_for-1,:],dims=1)')
+            tclass = [1;tclass];
+            Yfor[p+i_for,:]=tclass'*A_draw  .+ (exp.(hfor[p+i_for,]./2.0)*cholesky(Σ_draw).U*randn(n,1))';    
+        end
+    end
+    return Yfor3D
+
+
+end # end function forecast Chan2020csv()

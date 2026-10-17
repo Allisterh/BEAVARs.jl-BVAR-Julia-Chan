@@ -9,8 +9,8 @@ makedocs(
         "Priors" => [
             "Minnesota prior" => "Chan2020minn.md",
             "Chan2020iniw" => "Chan2020iniw.md",
-            "Chan2020iniw" => "Chan2020iniw.md",
             "Chan2020csv" => "Chan2020csv.md",
+            "CCK2016csv" => "CCK2016csv.md",
             "BGR2010" => "BGR2010.md"
         ],
         "Forecasting" => "forecasting.md",
