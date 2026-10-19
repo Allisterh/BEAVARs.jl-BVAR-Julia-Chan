@@ -54,7 +54,7 @@ struct Chan2020csv_type <: BVARmodelSFType end
 struct CCK2016csv_type <: BVARmodelSFType end
 struct BGR2010_type <: BVARmodelSFType end
 struct CPZ2023_type <: BVARmodelMFType end
-struct CPZ2023dev_type <: BVARmodelMFType end
+struct CPZ2023iniw_type <: BVARmodelMFType end
 struct Blagov2025_type <: BVARmodelMFType end
 struct Blagov2027_type <: BVARmodelMFType end
 
@@ -75,8 +75,8 @@ function selectModel(model_str::String)
         model_type = BGR2010_type()
     elseif model_str == "CPZ2023"
         model_type = CPZ2023_type()
-    elseif model_str == "CPZ2023dev"
-        model_type = CPZ2023dev_type()
+    elseif model_str == "CPZ2023iniw"
+        model_type = CPZ2023iniw_type()
     elseif model_str == "Blagov2025"
         model_type = Blagov2025_type()
     elseif model_str == "Blagov2027"
@@ -230,6 +230,8 @@ function selectConstLoc(model_str::String)
         const_loc = 1
     elseif model_str == "Blagov2027"
         const_loc = 1
+    elseif model_str == "CPZ2023iniw"
+        const_loc = 1
     else
         error("Constant location (right or left of X) is not defined for this model.\n Either define it in selectConstLoc function or report the bug")
     end
@@ -250,7 +252,7 @@ include("Chan2020iniw.jl")
 include("Chan2020csv.jl")
 include("CCK2016csv.jl")
 include("CPZ2023.jl")
-include("CPZ2023dev.jl")
+include("CPZ2023iniw.jl")
 include("Blagov2025.jl")
 include("Blagov2027.jl")
 include("plot_functions.jl")
