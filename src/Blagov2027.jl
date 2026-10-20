@@ -20,30 +20,30 @@ function beavar(::Blagov2027_type, set_struct, hyp_struct, data_struct)
 end
 
 
-# Structure for the datasets and the frequency mix
-@doc raw"""
-    dataBlagov2027(data_HF::TimeArray,data_LF::TimeArray,prior_RW::Int,var_list::Array{Symbol,1})
+# # Structure for the datasets and the frequency mix
+# @doc raw"""
+#     dataBlagov2027(data_HF::TimeArray,data_LF::TimeArray,prior_RW::Int,var_list::Array{Symbol,1})
 
-generate a dataset strcture for use with Blagov2027 model
+# generate a dataset strcture for use with Blagov2027 model
 
-# Arguments
-    dataHF_tab: TimeArray with your high-frequency variables (monthly or quarterly, respectively)
-    dataLF_tab: TimeArray with your low-frequency variables (quarterly or yearly, respectively)
-    var_list:   the variable order. Note that the functions that call these variables allow this to be optional.
+# # Arguments
+#     dataHF_tab: TimeArray with your high-frequency variables (monthly or quarterly, respectively)
+#     dataLF_tab: TimeArray with your low-frequency variables (quarterly or yearly, respectively)
+#     var_list:   the variable order. Note that the functions that call these variables allow this to be optional.
 
-See also `makeDataSetup`.
-"""
-@with_kw struct dataBlagov2027{Ttyp <: AbstractFloat, Ntyp, Dtyp, Atyp <: AbstractArray{Ttyp, Ntyp}} <: BVARmodelDataSetup
-    dataHF_tab::TimeArray{Ttyp,Ntyp,Dtyp,Atyp}                       # data for the high-frequency variables
-    dataLF_tab::TimeArray{Ttyp,Ntyp,Dtyp,Atyp}                       # data for the low-frequency variables
-    var_list::Array{Symbol,1}                                   # Symbol vector with the variable names, will be used for ordering
-end
+# See also `makeDataSetup`.
+# """
+# @with_kw struct dataBlagov2027{Ttyp <: AbstractFloat, Ntyp, Dtyp, Atyp <: AbstractArray{Ttyp, Ntyp}} <: BVARmodelDataSetup
+#     dataHF_tab::TimeArray{Ttyp,Ntyp,Dtyp,Atyp}                       # data for the high-frequency variables
+#     dataLF_tab::TimeArray{Ttyp,Ntyp,Dtyp,Atyp}                       # data for the low-frequency variables
+#     var_list::Array{Symbol,1}                                   # Symbol vector with the variable names, will be used for ordering
+# end
 
 @doc raw"""
     Prepare the structure containg the data for the mixed-frequency VAR. Uses Time Arrays from the TimeSeries package
 """
 function makeDataSetup(::Blagov2027_type,dataHF_tab::TimeArray, dataLF_tab::TimeArray; var_list =  [colnames(dataHF_tab); colnames(dataLF_tab)])
-    return dataBlagov2027(dataHF_tab, dataLF_tab, var_list)
+    return data_MFVAR_2f(dataHF_tab, dataLF_tab, var_list)
 end
 
 

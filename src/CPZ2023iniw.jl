@@ -153,11 +153,11 @@ Generate data for a mixed-frequency VAR. Uses Time Arrays from the TimeSeries pa
     dataLF_tab: TimeArray with your low-frequency variables (quarterly or yearly, respectively)
     var_list:   the variable order. Note that the functions that call these variables allow this to be optional.
 
-See also `dataMFVAR_2freq`.
+See also `data_MFVAR_2f`.
 
 """
 function makeDataSetup(::CPZ2023iniw_type,dataHF_tab::TimeArray, dataLF_tab::TimeArray; var_list =  [colnames(dataLF_tab); colnames(dataHF_tab)])
-    return dataMFVAR_2freq(dataHF_tab, dataLF_tab, var_list)
+    return data_MFVAR_2f(dataHF_tab, dataLF_tab, var_list)
 end
 
 

@@ -8,7 +8,7 @@
 function beavar(::CPZ2023_type, set_struct::BVARmodelSetup, hyp_struct::BVARmodelHypSetup, data_struct::BVARmodelDataSetup)
     println("Hello CPZ2023")
     @unpack dataHF_tab,dataLF_tab, var_list = data_struct
-    @time store_YY,store_YY_LF,store_β, store_Σt_inv, M_zsp, z_vec, Sm_bit,store_Σt, freq_mix_tp, fdatesHF, fdatesLF = CPZ2023(dataHF_tab,dataLF_tab,var_list,set_struct,hyp_struct);
+    store_YY,store_YY_LF,store_β, store_Σt_inv, M_zsp, z_vec, Sm_bit,store_Σt, freq_mix_tp, fdatesHF, fdatesLF = CPZ2023(dataHF_tab,dataLF_tab,var_list,set_struct,hyp_struct);
     out_struct = VAROutput_CPZ2023(store_β,store_Σt_inv,store_YY,store_YY_LF, M_zsp, z_vec, Sm_bit,store_Σt,var_list,freq_mix_tp, fdatesHF, fdatesLF);
     return out_struct
 end
@@ -98,11 +98,10 @@ Generate data for a mixed-frequency VAR. Uses Time Arrays from the TimeSeries pa
     dataLF_tab: TimeArray with your low-frequency variables (quarterly or yearly, respectively)
     var_list:   the variable order. Note that the functions that call these variables allow this to be optional.
 
-See also `dataMFVAR_2freq`.
 
 """
 function makeDataSetup(::CPZ2023_type,dataHF_tab::TimeArray, dataLF_tab::TimeArray; var_list =  [colnames(dataLF_tab); colnames(dataHF_tab)])
-    return dataMFVAR_2freq(dataHF_tab, dataLF_tab, var_list)
+    return data_MFVAR_2f(dataHF_tab, dataLF_tab, var_list)
 end
 
 
@@ -852,25 +851,6 @@ function makeHypSetup(::CPZ2023_type)
     return hypChan2020()
 end
 
-
-# Structure for the datasets and the frequency mix
-@doc raw"""
-    dataMFVAR_2freq(data_HF::TimeArray,data_LF::TimeArray,var_list::Array{Symbol,1})
-
-Generate a dataset strcture for use with CPZ2023 model
-
-# Arguments
-    dataHF_tab: TimeArray with your high-frequency variables (monthly or quarterly, respectively)
-    dataLF_tab: TimeArray with your low-frequency variables (quarterly or yearly, respectively)
-    var_list:   the variable order. Note that the functions that call these variables allow this to be optional.
-
-See also `makeDataSetup`.
-"""
-@with_kw struct dataMFVAR_2freq{T <: AbstractFloat, N, D, A <: AbstractArray{T, N}} <: BVARmodelDataSetup
-    dataHF_tab::TimeArray{T,N,D,A}                                       # data for the high-frequency variables
-    dataLF_tab::TimeArray{T,N,D,A}                                       # data for the low-frequency variables
-    var_list::Array{Symbol,1}                                   # Symbol vector with the variable names, will be used for ordering
-end
 
 
 """

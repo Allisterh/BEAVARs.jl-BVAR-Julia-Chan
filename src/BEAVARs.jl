@@ -115,6 +115,27 @@ end
     var_list::Array{Symbol,1}                                          # Symbol vector with the variable names, will be used for ordering
 end
 
+
+# Structure for the datasets of a mixed-frequency BVAR
+@doc raw"""
+    data_MFVAR_2f(data_HF::TimeArray,data_LF::TimeArray,var_list::Array{Symbol,1})
+
+Generate a dataset strcture for use with CPZ2023 model
+
+# Arguments
+    dataHF_tab: TimeArray with your high-frequency variables (monthly or quarterly, respectively)
+    dataLF_tab: TimeArray with your low-frequency variables (quarterly or yearly, respectively)
+    var_list:   the variable order. Note that the functions that call these variables allow this to be optional.
+
+See also `makeDataSetup`.
+"""
+@with_kw struct data_MFVAR_2f{T <: AbstractFloat, N, D, A <: AbstractArray{T, N}} <: BVARmodelDataSetup
+    dataHF_tab::TimeArray{T,N,D,A}                                       # data for the high-frequency variables
+    dataLF_tab::TimeArray{T,N,D,A}                                       # data for the low-frequency variables
+    var_list::Array{Symbol,1}                                   # Symbol vector with the variable names, will be used for ordering
+end
+
+
 # Structure to hold the median, 68% and 95% percentiles of the forecasts for a VAR
 @with_kw struct data_fcast_PI{T <: AbstractFloat, N, D, A <: AbstractArray{T, N}} <: BVARmodelDataSetup
     YYfor_low05_tab::TimeArray{T,N,D,A}         
