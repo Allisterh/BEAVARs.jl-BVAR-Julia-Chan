@@ -1,31 +1,87 @@
-#TODO create a custom dataset for testing
-# TODO create a VAR Data for this
+@testset "HBMatrix lower block-Toeplitz indexing" begin
+        B1 = [1 2; 3 4]
+        B2 = [5 6; 7 8]
+        B3 = [9 10; 11 12]
+        mBI = hcat(B1, B2, B3)
+        HB = BEAVARs.HBMatrix(mBI, 4)
 
-model_type, set_struct, hyp_struct= makeSetup("CPZ2023",n_burn=50;n_save=10,p=2)
-dataHF_tab, dataLF_tab, varOrder = BEAVARs.readSpecMF("bgtest","data/Specifications_mfvar.xlsx");
+        expected = zeros(Int, 8, 8)
+        expected[1:2, 1:2] = B1
+        expected[3:4, 1:2] = B2
+        expected[3:4, 3:4] = B1
+        expected[5:6, 1:2] = B3
+        expected[5:6, 3:4] = B2
+        expected[5:6, 5:6] = B1
+        expected[7:8, 3:4] = B3
+        expected[7:8, 5:6] = B2
+        expected[7:8, 7:8] = B1
 
-aggMix = 0;
-data_struct = makeDataSetup(model_type,dataHF_tab, dataLF_tab,aggMix)
+        @test Matrix(HB) == expected
+        @test HB[1:2, 1:2] == B1
+        @test HB[3:4, 1:2] == B2
+        @test HB[5:6, 1:2] == B3
+        @test HB[1:2, 3:4] == zeros(Int, 2, 2)
 
+        selector = sparse([1, 6, 7], [1, 2, 3], [1.0, 1.0, 1.0], 8, 3)
+        product = zeros(Float64, 8, 3)
+        @test mul!(product, HB, selector) ≈ Matrix(HB) * Matrix(selector)
 
-@unpack p, nburn,nsave, const_loc, n_fcst = set_struct
-ndraws = nsave+nburn;
-nmdraws = 10;               # given a draw from the parameters to draw multiple time from the distribution of the missing data for better confidence intervals
+        weighted_selector = sparse([1, 6, 7], [1, 2, 3], [2.0, -1.0, 0.5], 8, 3)
+        initial = fill(0.25, 8, 3)
+        product .= initial
+        @test mul!(product, HB, weighted_selector, 1.5, -2.0) ≈
+              1.5 .* Matrix(HB) * Matrix(weighted_selector) .- 2.0 .* initial
+    end
 
-fdataHF_tab, z_tab, freq_mix_tp, datesHF, varNamesLF, fvarNames = BEAVARs.CPZ_prep_TimeArrays(dataLF_tab,dataHF_tab,varOrder,aggMix,n_fcst)
-YYwNA = values(fdataHF_tab);
-YY = deepcopy(YYwNA);
-Tf,n = size(YY);
+    @testset "sparse adjoint times block-banded matrix" begin
+        n, T = 2, 3
+        A = sparse(
+            [1, 3, 5, 2, 4, 6],
+            [1, 1, 1, 2, 3, 4],
+            [1.0, -2.0, 0.5, 3.0, -1.5, 2.0],
+            T*n, 4,
+        )
+        diagonal = BlockBandedMatrix{Float64}(
+            undef, fill(n, T), fill(n, T), (0, 0),
+        )
+        for t in 1:T
+            diagonal[Block(t, t)] .= [1.0+t 0.25; -0.5 2.0-t]
+        end
 
-B_draw, structB_draw, Σt_inv, b0 = BEAVARs.initParamMatrices(n,p,const_loc) 
+        product = fill(0.25, size(A, 2), size(A, 1))
+        initial = copy(product)
+        @test mul!(product, A', diagonal) ≈ Matrix(A') * Matrix(diagonal)
+        product .= initial
+        @test mul!(product, A', diagonal, 1.5, -2.0) ≈
+              1.5 .* Matrix(A') * Matrix(diagonal) .- 2.0 .* initial
 
-YYt, Y0, longyo, nm, H_B, H_B_CI, strctBdraw_LI, Σ_invsp, Σt_LI, Σp_invsp, Σpt_ind, Xb, cB, cB_b0_LI, Smsp, Sosp, Sm_bit, Gm, Go, GΣ, Kym = BEAVARs.CPZ_initMatrices(YY,structB_draw,b0,Σt_inv,p);
+        banded = BlockBandedMatrix{Float64}(
+            undef, fill(n, T), fill(n, T), (1, 1),
+        )
+        for t in 1:T, s in max(1, t-1):min(T, t+1)
+            banded[Block(t, s)] .= [t+s 0.25; -0.5 t-s]
+        end
+        @test mul!(product, A', banded) ≈ Matrix(A') * Matrix(banded)
+    end
 
-M_zsp, z_vec, T_z, MOiM, MOiz = BEAVARs.CPZ_makeM_inter(z_tab,YYt,Sm_bit,datesHF,varNamesLF,fvarNames,freq_mix_tp,nm,Tf);
-
-
-fdatesHF = timestamp(fdataHF_tab);
-fdatesLF = collect(timestamp(z_tab)[1]:Month(freq_mix_tp[2]):fdatesHF[end]);
-M_inter_agg = BEAVARs.CPZ_makeM_inter_agg(fdatesLF,fdatesHF,freq_mix_tp);
-
-@test data_struct.aggMix==0
+    @testset "block array times sparse matrix" begin
+        A = BlockedArray(
+            [1.0 2.0 0.0 0.0 3.0 4.0;
+             5.0 6.0 0.0 0.0 7.0 8.0;
+             0.0 0.0 9.0 10.0 0.0 0.0;
+             0.0 0.0 11.0 12.0 0.0 0.0],
+            [2, 2], [2, 2, 2],
+        )
+        B = sparse(
+            [1, 3, 5, 2, 4, 6],
+            [1, 1, 1, 2, 3, 3],
+            [1.0, -2.0, 0.5, 3.0, -1.5, 2.0],
+            6, 3,
+        )
+        product = fill(0.25, size(A, 1), size(B, 2))
+        initial = copy(product)
+        @test mul!(product, A, B) ≈ Matrix(A) * Matrix(B)
+        product .= initial
+        @test mul!(product, A, B, 1.5, -2.0) ≈
+              1.5 .* Matrix(A) * Matrix(B) .- 2.0 .* initial
+    end

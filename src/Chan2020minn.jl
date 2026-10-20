@@ -99,6 +99,12 @@ end
 #-----------------------
 # The den of the beavar
 #-----------------------
+
+@doc raw"""
+    beavar(::Chan2020minn_type, set_struct, hyp_str, data_struct)
+
+    Estimates a classical Minnesota BVAR with known variance-covariance matrix.
+"""
 function beavar(::Chan2020minn_type, set_struct, hyp_str, data_struct)
     println("Hello Minn")
     @unpack data_tab, data_mat, var_list = data_struct;

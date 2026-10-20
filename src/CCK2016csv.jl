@@ -49,7 +49,7 @@ Generate a dataset strcture for use with the single-frequency models
 # Arguments
     model_type: The custom model type (not a string)
     data_tab:   TimeArray with the data_de
-    var_list:   A symbol list with the variable names. Will be used for oredering the variables. Uses by default the names from data_tab if not supplied. note that Symbol lists have a particular synthax.
+    var_list (optional):   A symbol list with the variable names. Will be used for oredering the variables. Uses by default the names from data_tab if not supplied. note that Symbol lists have a particular synthax.
 # Returns
     data_struct: A dataBVAR_TA structure with the data and metadata
 """

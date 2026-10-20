@@ -324,6 +324,88 @@ function LinearAlgebra.mul!(
     return C
 end
 
+function LinearAlgebra.mul!(
+    C::AbstractMatrix, At::Adjoint{<:Any,<:SparseMatrixCSC},
+    B::BlockBandedMatrices.AbstractBlockBandedMatrix,
+    α::Number=one(eltype(C)), β::Number=zero(eltype(C)),
+)
+    A = parent(At)
+    n = first(BlockArrays.blocklengths(axes(B, 1)))
+    size(A, 1) % n == 0 ||
+        throw(DimensionMismatch("sparse matrix row count must be divisible by the block size"))
+    T = div(size(A, 1), n)
+    size(B) == (size(A, 1), size(A, 1)) &&
+        size(C) == (size(A, 2), size(A, 1)) ||
+        throw(DimensionMismatch("incompatible dimensions for sparse adjoint * block-banded matrix"))
+    all(==(n), BlockArrays.blocklengths(axes(B, 1))) &&
+        all(==(n), BlockArrays.blocklengths(axes(B, 2))) ||
+        throw(DimensionMismatch("block sizes must be uniform"))
+
+    _scale_output!(C, β)
+    iszero(α) && return C
+
+    rows = rowvals(A)
+    vals = nonzeros(A)
+    lower_bw, upper_bw = BlockBandedMatrices.blockbandwidths(B)
+
+    if iszero(lower_bw) && iszero(upper_bw) &&
+       B isa BlockBandedMatrices.BlockBandedMatrix &&
+       length(B.data) == T*n*n
+        data = B.data
+        @inbounds for i in axes(A, 2), p in nzrange(A, i)
+            r = rows[p]
+            t, e = fldmod1(r, n)
+            outputrow = i
+            blockstart = (t - 1)*n
+            blockdata = (t - 1)*n*n
+            scale = α * conj(vals[p])
+            for q in 1:n
+                C[outputrow, blockstart + q] +=
+                    scale * data[blockdata + (q - 1)*n + e]
+            end
+        end
+        return C
+    end
+
+    @inbounds for i in axes(A, 2), p in nzrange(A, i)
+        r = rows[p]
+        t, e = fldmod1(r, n)
+        scale = α * conj(vals[p])
+        for s in max(1, t - lower_bw):min(T, t + upper_bw)
+            blockstart = (s - 1)*n
+            for q in 1:n
+                C[i, blockstart + q] += scale * B[r, blockstart + q]
+            end
+        end
+    end
+    return C
+end
+
+function LinearAlgebra.mul!(
+    C::AbstractMatrix,
+    A::BlockArrays.BlockedArray{TA,2,<:AbstractMatrix{TA}},
+    B::SparseMatrixCSC,
+    α::Number=one(eltype(C)), β::Number=zero(eltype(C)),
+) where {TA}
+    size(A, 2) == size(B, 1) && size(C) == (size(A, 1), size(B, 2)) ||
+        throw(DimensionMismatch("incompatible dimensions for block array * sparse matrix"))
+
+    _scale_output!(C, β)
+    iszero(α) && return C
+
+    Adata = parent(A)
+    rows = rowvals(B)
+    vals = nonzeros(B)
+    @inbounds for j in axes(B, 2), p in nzrange(B, j)
+        k = rows[p]
+        scale = α * vals[p]
+        for i in axes(A, 1)
+            C[i, j] += Adata[i, k] * scale
+        end
+    end
+    return C
+end
+
 
 @doc raw"""
     update_Xsur!(Xsur::XSurFormMatrix, Xnew::AbstractMatrix)
@@ -524,4 +606,64 @@ struct make_iniw_Σt_struct{T <: AbstractFloat}
     Σt_inv::Array{T,2}
     S_0::Diagonal{T}
     nu0::Int
+end
+
+
+
+# custom H_B matrix
+struct HBMatrix{T, M<:AbstractVecOrMat{T}} <: AbstractMatrix{T}
+    mBI::M
+    Tf::Int
+end
+
+getTf(X::HBMatrix) = X.Tf
+getn(X::HBMatrix) = size(X.mBI, 1)
+getp(X::HBMatrix) = cld(size(X.mBI, 2), getn(X)) - 1
+Base.parent(X::HBMatrix) = X.mBI
+Base.size(X::HBMatrix) = (getn(X)*getTf(X), getn(X)*getTf(X))
+function Base.getindex(X::HBMatrix, i::Int, j::Int)
+    @boundscheck checkbounds(X, i, j)
+    n = getn(X)
+    rowblk, iA = fldmod1(i, n)
+    colblk, jA = fldmod1(j, n)
+    sourceblk = rowblk - colblk + 1
+    sourcecol = (sourceblk - 1)*n + jA
+    return get(parent(X), CartesianIndex(iA, sourcecol), zero(eltype(X)))
+end
+
+function LinearAlgebra.mul!(C::AbstractMatrix, A::HBMatrix, S::SparseMatrixCSC)
+    return LinearAlgebra.mul!(C, A, S, one(eltype(C)), zero(eltype(C)))
+end
+
+function LinearAlgebra.mul!(
+    C::AbstractMatrix, A::HBMatrix, S::SparseMatrixCSC,
+    α::Number, β::Number,
+)
+    size(A, 2) == size(S, 1) && size(C) == (size(A, 1), size(S, 2)) ||
+        throw(DimensionMismatch("incompatible dimensions for HBMatrix * sparse matrix"))
+
+    _scale_output!(C, β)
+    iszero(α) && return C
+
+    n = getn(A)
+    rows = rowvals(S)
+    vals = nonzeros(S)
+
+    for outcol in axes(S, 2), k in nzrange(S, outcol)
+        sourcecol = rows[k]
+        sourceblock, sourceoffset = fldmod1(sourcecol, n)
+        lastblock = min(getTf(A), sourceblock + getp(A))
+        scale = α * vals[k]
+
+        for rowblock in sourceblock:lastblock
+            lagblock = rowblock - sourceblock + 1
+            blockcol = (lagblock - 1)*n + sourceoffset
+            blockcol > size(parent(A), 2) && continue
+            rowstart = (rowblock - 1)*n
+            @inbounds for i in 1:n
+                C[rowstart + i, outcol] += scale * parent(A)[i, blockcol]
+            end
+        end
+    end
+    return C
 end

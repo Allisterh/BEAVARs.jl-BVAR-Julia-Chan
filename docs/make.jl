@@ -6,13 +6,8 @@ makedocs(
     sitename="BEAVARs.jl",
     pages = [
         "Introduction" => "introduction.md",
-        "Priors" => [
-            "Minnesota prior" => "Chan2020minn.md",
-            "Chan2020iniw" => "Chan2020iniw.md",
-            "Chan2020csv" => "Chan2020csv.md",
-            "CCK2016csv" => "CCK2016csv.md",
-            "BGR2010" => "BGR2010.md"
-        ],
+        "Priors" => "priors.md",
+        "Methods" => "methods.md",
         "Forecasting" => "forecasting.md",
         "Structural analysis" => "irfs.md",
         "File library" => [

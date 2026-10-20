@@ -96,7 +96,7 @@ function CPZ2023dev(dataHF_tab::TimeArray{Typ,N,D,A},dataLF_tab::TimeArray{Typ,N
 
     for ii in 1:ndraws
         # draw of the missing values
-        BEAVARs.BEAVARs.CPZdev_draw_wz!(YYt,longyo,Y0,pbsi_struct,B_draw,strctBdraw_LI,Σt_LI,cB_b0_LI,p,n,Sm_bit,nm,H_B_CI,nmdraws,Σt_ns_CI);
+        BEAVARs.CPZdev_draw_wz!(YYt,longyo,Y0,pbsi_struct,B_draw,strctBdraw_LI,Σt_LI,cB_b0_LI,p,n,Sm_bit,nm,H_B_CI,nmdraws,Σt_ns_CI);
         # BEAVARs.CPZ_draw_wz_lessAlloc!(YYt,longyo,Y0,cB,B_draw,structB_draw,strctBdraw_LI,Σt_inv,Σt_LI,Xb,cB_b0_LI,Σ_inv,p,n,Sm_bit,Smsp,Sosp,MOiM,MOiz,Gm,Go,H_B,GΣ,Kym,KymBar,H_B_CI,nmdraws,μ_yBar,mdraws,draw_tmp)
         
         # draw of the parameters
@@ -138,7 +138,7 @@ end
     Draw with restrictions
 """
 function CPZdev_draw_wz!(YYt,longyo,Y0,pbsi_struct,B_draw,strctBdraw_LI,Σt_LI,cB_b0_LI,p,n,Sm_bit,nm,H_B_CI,nmdraws,Σt_ns_CI);
-    
+    @time begin
     # updating cB
     BEAVARs.CPZdev_update_cB!(pbsi_struct.cB,B_draw[:,2:end],B_draw[:,1],Y0,cB_b0_LI,p,n)
 
@@ -156,7 +156,7 @@ function CPZdev_draw_wz!(YYt,longyo,Y0,pbsi_struct,B_draw,strctBdraw_LI,Σt_LI,c
     CL = cholesky(Hermitian(pbsi_struct.Kym));
     pbsi_struct.long_pr[:,] = (pbsi_struct.cB-pbsi_struct.Go*longyo);
     pbsi_struct.μ_y[:,] = CL.U\(CL.U'\(pbsi_struct.GΣ*pbsi_struct.long_pr));
-
+    end
 
     pbsi_struct.KymBar[:,:] = pbsi_struct.MOiM + pbsi_struct.Kym;
     CLBar = cholesky(Hermitian(pbsi_struct.KymBar))
@@ -209,6 +209,45 @@ function CPZnew_draw_wz!(YYt,longyo,Y0,pbsi_struct,B_draw,strctBdraw_LI,Σt_LI,c
 end
 
 
+
+@doc raw"""
+    Draw with restrictions
+"""
+function CPZnewer_draw_wz!(YYt,longyo,Y0,pbsiNew_struct,B_draw,cB_b0_LI,p,n,Sm_bit,nm,nmdraws,Tf);
+    @unpack structB_draw, HB, Σt_inv, Σf_inv_bb, cB, long_pr, μ_y, μ_yBar, mdraws, Gm, Go, GΣ, Kym, KymBar, Smsp, Sosp, MOiM, MOiz = pbsiNew_struct
+    @time begin
+    # updating cB
+    BEAVARs.CPZ_update_cB!(cB,B_draw[:,2:end],B_draw[:,1],Y0,cB_b0_LI,p,n);
+
+    # updating H_B
+    HB.mBI .= -structB_draw;
+
+    # updating the full Σf_inv_bb
+    BEAVARs.update_Σf_inv_bb!(Σf_inv_bb,Σt_inv,Tf,n);
+
+
+    mul!(Gm,HB,Smsp);
+    mul!(Go,HB,Sosp);
+    mul!(GΣ,Gm',Σf_inv_bb);
+    mul!(Kym,GΣ,Gm);
+    CL = cholesky(Hermitian(Kym));
+    long_pr[:,] = (cB-Go*longyo);
+    μ_y[:,] = CL.U\(CL.U'\(GΣ*long_pr));
+
+    end
+    KymBar[:,:] = MOiM + Kym;
+    CLBar = cholesky(Hermitian(KymBar))
+    μ_yBar[:,] = CLBar.U\(CLBar.U'\(MOiz + Kym*μ_y))
+
+    # mdraws = zeros(nm,nmdraws)
+    for i_draw in 1:nmdraws
+        mdraws[:,i_draw] = μ_yBar +  ldiv!(CLBar.U,randn(nm,))
+    end    
+    YYt[Sm_bit] = dropdims(median(mdraws,dims=2),dims=2);
+    return YYt
+end
+
+
 struct PrecisionBasedSamplerInputs{T <: AbstractFloat, N} 
     structB_draw::Array{T, N}   
     H_B::Array{T, N}            
@@ -236,7 +275,7 @@ struct PrecisionBasedSamplerInputs_dev{T <: AbstractFloat, N}
     structB_draw::Array{T, N}   
     HB::HBMatrix{T, Array{T,N}}            
     Σt_inv::Array{T, N}         
-    Σ_inv::BlockBandedMatrix{T}
+    Σf_inv_bb::BlockBandedMatrix{T}
     cB::Array{T, 1}             
     long_pr::Array{T, 1}
     μ_y::Array{T, 1}            
@@ -373,14 +412,14 @@ function CPZ_initMatrices_v4(YY,YYt,vYYt,Tf,n,nm,Sm_bit,So_bit,structB_draw,b0,�
     # Initialize matrices
     mBI = -structB_draw;
     HB = BEAVARs.HBMatrix(mBI,Tf);
-    Σf_bb_inv = BlockBandedMatrix{Float64}(undef,ones(Int,Tf,).*n, ones(Int,Tf,).*n, (0, 0));
+    Σf_inv_bb = BlockBandedMatrix{Float64}(undef,ones(Int,Tf,).*n, ones(Int,Tf,).*n, (0, 0));
     expmhf = ones(Tf,);                     # expmh and correspondingly h in csv_h_struct are only of size T, whereas for the PBS we need Tf = T+p
-    BEAVARs.update_Σf_bb_inv!(Σf_bb_inv,Σt_inv,expmhf,Tf,n);
+    BEAVARs.update_Σf_inv_bb!(Σf_inv_bb,Σt_inv,expmhf,Tf,n);
     cB_b0_LI = repeat(1:n,div(Tfn-n*p-n+1+n,n));  # this repeats [1:n] so that we can update cB[indicesAfter Y_0,Y_{-1}, ..., Ymp] = b0[cB_b0_LI]
     Xb = sparse(Matrix(1.0I, Tfn, Tfn))
     cB = repeat(b0,Tf);
 
-    Gm = HB*Smsp; Go = HB*Sosp; GΣ = Gm'*Σf_bb_inv; Kym = GΣ*Gm; # we can initialize all these and then mutate with mul!()
+    Gm = HB*Smsp; Go = HB*Sosp; GΣ = Gm'*Σf_inv_bb; Kym = GΣ*Gm; # we can initialize all these and then mutate with mul!()
     long_pr = (cB-Go*longyo);
     μ_yBar = zeros(nm,)
     KymBar = similar(Kym);
@@ -388,78 +427,46 @@ function CPZ_initMatrices_v4(YY,YYt,vYYt,Tf,n,nm,Sm_bit,So_bit,structB_draw,b0,�
     draw_tmp = zeros(nm)
     μ_y = zeros(nm,);
 
-    pbsi_struct = BEAVARs.PrecisionBasedSamplerInputs_dev(structB_draw, HB, Σt_inv, Σf_bb_inv, cB, long_pr, μ_y, μ_yBar, mdraws, Gm, Go, GΣ,  Kym, KymBar, Smsp,Sosp,  MOiM,  MOiz);
+    pbsi_struct = BEAVARs.PrecisionBasedSamplerInputs_dev(structB_draw, HB, Σt_inv, Σf_inv_bb, cB, long_pr, μ_y, μ_yBar, mdraws, Gm, Go, GΣ,  Kym, KymBar, Smsp,Sosp,  MOiM,  MOiz);
     
     return pbsi_struct
 end
 
 
 
+"""
+    update_Σf_inv_bb!(Σf_inv_bb,Σt_inv,Tf,n)
 
+    Updates a large block-banded diagonal matrix with new identical blocks across the diagonal with minimal allocations.
 
-
-
-function update_Σf_bb_inv!(Σf_bb_inv,Σt_inv,expmhf,Tf,n)
+    Σf_inv_bb = [Σtinv    0    0   ;
+                   0   Σtinv   0   ;
+                   0    0    Σtinv ;
+                ]
+"""
+function update_Σf_inv_bb!(Σf_inv_bb,Σt_inv,Tf,n)
     diagonal_block = vec(Σt_inv)
     for ii in 1:Tf
-        copyto!(Σf_bb_inv.data, (ii - 1)*n*n + 1, diagonal_block.*expmhf[ii], 1, n*n)
+        copyto!(Σf_inv_bb.data, (ii - 1)*n*n + 1, diagonal_block, 1, n*n)
     end
 end
 
-# custom H_B matrix
-struct HBMatrix{T, M<:AbstractVecOrMat{T}} <: AbstractMatrix{T}
-    mBI::M
-    Tf::Int
-end
 
-getTf(X::HBMatrix) = X.Tf
-getn(X::HBMatrix) = size(X.mBI, 1)
-getp(X::HBMatrix) = cld(size(X.mBI, 2), getn(X)) - 1
-Base.parent(X::HBMatrix) = X.mBI
-Base.size(X::HBMatrix) = (getn(X)*getTf(X), getn(X)*getTf(X))
-function Base.getindex(X::HBMatrix, i::Int, j::Int)
-    @boundscheck checkbounds(X, i, j)
-    n = getn(X)
-    rowblk, iA = fldmod1(i, n)
-    colblk, jA = fldmod1(j, n)
-    sourceblk = rowblk - colblk + 1
-    sourcecol = (sourceblk - 1)*n + jA
-    return get(parent(X), CartesianIndex(iA, sourcecol), zero(eltype(X)))
-end
 
-function LinearAlgebra.mul!(C::AbstractMatrix, A::HBMatrix, S::SparseMatrixCSC)
-    return LinearAlgebra.mul!(C, A, S, one(eltype(C)), zero(eltype(C)))
-end
+"""
+    update_Σf_inv_bb!(Σf_inv_bb,Σt_inv,expmhf,Tf,n)
 
-function LinearAlgebra.mul!(
-    C::AbstractMatrix, A::HBMatrix, S::SparseMatrixCSC,
-    α::Number, β::Number,
-)
-    size(A, 2) == size(S, 1) && size(C) == (size(A, 1), size(S, 2)) ||
-        throw(DimensionMismatch("incompatible dimensions for HBMatrix * sparse matrix"))
+    Updates a large block-banded diagonal matrix with new blocks across the diagonal, multiplied by exp.(-h[block#]). 
+    Used for common stochastic volatility.
 
-    _scale_output!(C, β)
-    iszero(α) && return C
-
-    n = getn(A)
-    rows = rowvals(S)
-    vals = nonzeros(S)
-
-    for outcol in axes(S, 2), k in nzrange(S, outcol)
-        sourcecol = rows[k]
-        sourceblock, sourceoffset = fldmod1(sourcecol, n)
-        lastblock = min(getTf(A), sourceblock + getp(A))
-        scale = α * vals[k]
-
-        for rowblock in sourceblock:lastblock
-            lagblock = rowblock - sourceblock + 1
-            blockcol = (lagblock - 1)*n + sourceoffset
-            blockcol > size(parent(A), 2) && continue
-            rowstart = (rowblock - 1)*n
-            @inbounds for i in 1:n
-                C[rowstart + i, outcol] += scale * parent(A)[i, blockcol]
-            end
-        end
+    Σf_inv_bb = [Σtinv.*h[1]    0          0   ;
+                   0        Σtinv.*h[2]    0   ;
+                   0            0      Σtinv.*h[3] ;
+                ]
+"""
+function update_Σf_inv_bb!(Σf_inv_bb,Σt_inv,expmhf,Tf,n)
+    diagonal_block = vec(Σt_inv)
+    for ii in 1:Tf
+        copyto!(Σf_inv_bb.data, (ii - 1)*n*n + 1, diagonal_block.*expmhf[ii], 1, n*n)
     end
-    return C
 end

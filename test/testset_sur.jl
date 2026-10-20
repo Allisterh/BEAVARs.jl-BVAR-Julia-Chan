@@ -1,6 +1,3 @@
-
-using BlockBandedMatrices, BlockArrays
-
 T = 228;
 n = 3;
 p = 4;
@@ -64,7 +61,7 @@ end
 # Tests to the block-banded representation
 
 
-BEAVARs.update_Σ_inv_bb!(Σ_inv_bb,Σt_inv,T,n,expmh);
+BEAVARs.update_Σf_inv_bb!(Σ_inv_bb,Σt_inv,expmh,T,n);
 # test whether the custom block-banded interface is the same as the sparse representation (exp(-h) = 1)
 @test Matrix(Σ_inv_sp) ≈ Σ_inv_bb   
 
@@ -72,7 +69,7 @@ BEAVARs.update_Σ_inv_bb!(Σ_inv_bb,Σt_inv,T,n,expmh);
 # test whether the multiplication of each block by h[element] is the same as the sparse representation (exp(-h) = 1)
 h                           = zeros(T,).+1.01;  
 expmh                       = exp.(-h);
-BEAVARs.update_Σ_inv_bb!(Σ_inv_bb,Σt_inv,T,n,expmh);
+BEAVARs.update_Σf_inv_bb!(Σ_inv_bb,Σt_inv,expmh,T,n);
 for ij = 1:T
     copyto!(Σ_inv_sp.nzval,(ij-1)*n*n + 1: n*n + (ij-1)*n*n, Σt_inv.*expmh[ij],1:n*n)
 end
