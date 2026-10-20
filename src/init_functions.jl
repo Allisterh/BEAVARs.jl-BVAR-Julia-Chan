@@ -28,11 +28,24 @@ Creates lagged matrices Y and X by mutating. Assumes constant is on the left of 
 """
 function mlagL!(YY,Y,X,p,n)
     for i = 1:p
-        X[:,1 + 1 +n*(i-1):n + (1) + n*(i-1)] = YY[p-i+1:end-i,:]
+        @views X[:,1 + 1 +n*(i-1):n + (1) + n*(i-1)] = YY[p-i+1:end-i,:]
     end
-    Y[:,:] = YY[p+1:end,:];
+    Y[:,:] = @view YY[p+1:end,:];
     return Y, X
 end
+
+"""
+    mlagL!(YY,X,p,n;intercept=1)
+
+    Creates lagged matrices X by mutating. Assumes constant is on the left of X and that Y is already a view of YY
+"""
+function mlagL!(YY,X,p,n)
+    for i = 1:p
+        @views X[:,1 + 1 +n*(i-1):n + (1) + n*(i-1)] = YY[p-i+1:end-i,:]
+    end
+    return X
+end
+
 
 
 """

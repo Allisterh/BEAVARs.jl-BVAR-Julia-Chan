@@ -71,8 +71,7 @@ function CPZ2023(dataHF_tab::TimeArray{Typ,N,D,A},dataLF_tab::TimeArray{Typ,N,D,
     for ii in 1:ndraws
         # draw of the missing values
         BEAVARs.CPZ_draw_wz!(YYt,longyo,Y0,cB,B_draw,structB_draw,strctBdraw_LI,Σt_inv,Σt_LI,Xb,cB_b0_LI,Σ_invsp,p,n,Sm_bit,Smsp,Sosp,nm,MOiM,MOiz,Gm,Go,H_B,GΣ,Kym,H_B_CI,nmdraws,Σt_ns_CI);
-        # BEAVARs.CPZ_draw_wz_lessAlloc!(YYt,longyo,Y0,cB,B_draw,structB_draw,strctBdraw_LI,Σt_inv,Σt_LI,Xb,cB_b0_LI,Σ_invsp,p,n,Sm_bit,Smsp,Sosp,MOiM,MOiz,Gm,Go,H_B,GΣ,Kym,KymBar,H_B_CI,nmdraws,μ_yBar,mdraws,draw_tmp)
-        
+       
         # draw of the parameters
         beta,b0,B_draw,Σt_inv,structB_draw,Σt = BEAVARs.CPZ_iniw!(YY,p,hyp_struct,n,k,b0,B_draw,Σt_inv,structB_draw,Σp_invsp,Σpt_ind,Y,X,T,Xsur_den,Xsur_CI,X_CI,XtΣ_inv_den,XtΣ_inv_X,Vβ_inv,βMinn,K_β,cholK_β,β_draw,S_0, Σpt_ind_CI);
 
@@ -99,11 +98,11 @@ Generate data for a mixed-frequency VAR. Uses Time Arrays from the TimeSeries pa
     dataLF_tab: TimeArray with your low-frequency variables (quarterly or yearly, respectively)
     var_list:   the variable order. Note that the functions that call these variables allow this to be optional.
 
-See also `dataCPZ2023`.
+See also `dataMFVAR_2freq`.
 
 """
 function makeDataSetup(::CPZ2023_type,dataHF_tab::TimeArray, dataLF_tab::TimeArray; var_list =  [colnames(dataLF_tab); colnames(dataHF_tab)])
-    return dataCPZ2023(dataHF_tab, dataLF_tab, var_list)
+    return dataMFVAR_2freq(dataHF_tab, dataLF_tab, var_list)
 end
 
 
@@ -146,11 +145,12 @@ function CPZ_prep_TimeArrays(dataLF_tab::TimeArray{T,N,D,A},dataHF_tab::TimeArra
     # add the forecast periods to the data
     datesLF_fcast = collect(datesLF[end]+freqL_date:freqL_date:datesLF[end]+freqL_date*(n_fcst+1)) # the added quarters for the forecast. We add one more which will be deleted just to make sure that we have enough months to cover the whole quarter (e.g. Q2 is 01.04. but monthly it is up to 01.06.)
     datesHF_fcast = (datesHF[end]+freqH_date:freqH_date:datesLF_fcast[end]-freqH_date);      # the added high frequency data for the forecast
+    HF_n_fcst = size(datesHF_fcast,1);                  # length of the high-frequency forecast
 
-    ta = TimeArray(datesHF_fcast, fill(NaN,size(datesHF_fcast,1),length(fvarNames)))
+    ta = TimeArray(datesHF_fcast, fill(NaN,HF_n_fcst,length(fvarNames)))
     rename!(ta, varOrder)
     fdataHF_tab = [fdataHF_tab; ta];
-    return fdataHF_tab, z_tab, freq_mix_tp, datesHF, varNamesLF, fvarNames
+    return fdataHF_tab, z_tab, freq_mix_tp, datesHF, varNamesLF, fvarNames, HF_n_fcst
 end
 
 
@@ -512,73 +512,6 @@ end
 
 
 
-@doc raw"""
-    Draw with restrictions
-"""
-function CPZ_draw_wz_alt!(YYt,longyo,Y0,cB,B_draw,structB_draw,sBd_ind,Σt_inv,Σt_LI,Xb,cB_b0_LI,Σ_inv,p,n,Sm_bit,Smsp,Sosp,nm,MOiM,MOiz,Gm,Go,H_B,GΣ,Kym,H_B_CI,nmdraws,Σt_ns_CI)
-    # updating cB
-    BEAVARs.CPZ_update_cB!(cB,B_draw[:,2:end],B_draw[:,1],Y0,cB_b0_LI,p,n)
-
-    # updating H_B
-    @views H_B[H_B_CI] = -structB_draw[sBd_ind];
-    # updating Σ_invFsp
-    #  Σ_invsp.nzval[:] = Σt_inv[Σt_LI];
-    @views Σ_inv[Σt_ns_CI] = Σt_inv[Σt_LI];
-
-    mul!(Gm,H_B,Smsp);
-    mul!(Go,H_B,Sosp);
-    mul!(GΣ,Gm',Σ_inv);
-    mul!(Kym,GΣ,Gm);
-    CL = cholesky(Hermitian(Kym))
-    long_pr = (cB-Go*longyo);
-    μ_y = CL.U\(CL.U'\(GΣ*long_pr));
-
-    KymBar = MOiM + Kym;
-    CLBar = cholesky(Hermitian(KymBar))
-    μ_yBar = CLBar.U\(CLBar.U'\(MOiz + Kym*μ_y))
-    
-    mdraws = zeros(nm,nmdraws)
-    for i_draw in 1:nmdraws
-        mdraws[:,i_draw] = μ_yBar +  ldiv!(CLBar.U,randn(nm,))
-    end    
-    YYt[Sm_bit] = dropdims(median(mdraws,dims=2),dims=2);
-    return YYt
-end
-
-@doc raw"""
-    Draw with restrictions
-"""
-function CPZ_draw_wz_lessAlloc!(YYt,longyo,Y0,cB,B_draw,structB_draw,sBd_ind,Σt_inv,Σt_LI,Xb,cB_b0_LI,Σ_invsp,p,n,Sm_bit,Smsp,Sosp,MOiM,MOiz,Gm,Go,H_B,GΣ,Kym,KymBar,H_B_CI,nmdraws,μ_yBar,mdraws,draw_tmp)
-    # updating cB
-    BEAVARs.CPZ_update_cB!(cB,B_draw[:,2:end],B_draw[:,1],Y0,cB_b0_LI,p,n)
-
-    # updating H_B
-    H_B[H_B_CI] = -structB_draw[sBd_ind];
-    # updating Σ_invFsp
-    Σ_invsp.nzval[:] = Σt_inv[Σt_LI];
-
-    mul!(Gm,H_B,Smsp);
-    mul!(Go,H_B,Sosp);
-    mul!(GΣ,Gm',Σ_invsp);
-    mul!(Kym,GΣ,Gm);
-    CL = cholesky(sparse(Hermitian(Kym)))
-    long_pr = (cB-Go*longyo);
-    μ_y = CL.U\(CL.U'\(GΣ*long_pr));
-
-    KymBar[:,:] = MOiM + Kym;
-    CLBar = cholesky(Hermitian(KymBar))
-    # we want to calculate  μ_yBar = CLBar.U\(CLBar.U'\(MOiz + Kym*μ_y))
-    mul!(μ_yBar,Kym,μ_y)                                        # do the inner most first, overwriting μ_y to save memory
-    μ_yBar[:] = MOiz + μ_yBar                                   # now add MOiz, still overwriting μ_yBar
-    ldiv!(CLBar.U,ldiv!(CLBar.U',μ_yBar))
-    # μ_yBar[:] = CLBar.U\(CLBar.U'\(MOiz + Kym*μ_y))
-
-    for i_draw in 1:nmdraws
-        mdraws[:,i_draw] .= μ_yBar .+  ldiv!(CLBar.U,Random.randn!(draw_tmp))
-    end 
-    YYt[Sm_bit] = dropdims(median(mdraws,dims=2),dims=2);
-    return YYt
-end
 
 
 @doc raw"""
@@ -922,7 +855,7 @@ end
 
 # Structure for the datasets and the frequency mix
 @doc raw"""
-    dataCPZ2023(data_HF::TimeArray,data_LF::TimeArray,var_list::Array{Symbol,1})
+    dataMFVAR_2freq(data_HF::TimeArray,data_LF::TimeArray,var_list::Array{Symbol,1})
 
 Generate a dataset strcture for use with CPZ2023 model
 
@@ -933,7 +866,7 @@ Generate a dataset strcture for use with CPZ2023 model
 
 See also `makeDataSetup`.
 """
-@with_kw struct dataCPZ2023{T <: AbstractFloat, N, D, A <: AbstractArray{T, N}} <: BVARmodelDataSetup
+@with_kw struct dataMFVAR_2freq{T <: AbstractFloat, N, D, A <: AbstractArray{T, N}} <: BVARmodelDataSetup
     dataHF_tab::TimeArray{T,N,D,A}                                       # data for the high-frequency variables
     dataLF_tab::TimeArray{T,N,D,A}                                       # data for the low-frequency variables
     var_list::Array{Symbol,1}                                   # Symbol vector with the variable names, will be used for ordering

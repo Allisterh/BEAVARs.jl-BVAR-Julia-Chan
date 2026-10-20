@@ -10,8 +10,8 @@
 function beavar(::CPZ2023iniw_type, set_struct::BVARmodelSetup, hyp_struct::BVARmodelHypSetup, data_struct::BVARmodelDataSetup)
     println("Hello CPZ2023iniw")
     @unpack dataHF_tab,dataLF_tab, var_list = data_struct
-    @time store_YY,store_YY_LF,store_β, store_Σt_inv, M_zsp, z_vec, Sm_bit,store_Σt, freq_mix_tp, fdatesHF, fdatesLF = CPZ2023dev(dataHF_tab,dataLF_tab,var_list,set_struct,hyp_struct);
-    out_struct = VAROutput_CPZ2023(store_β,store_Σt_inv,store_YY,store_YY_LF, M_zsp, z_vec, Sm_bit,store_Σt,var_list,freq_mix_tp, fdatesHF, fdatesLF);
+    store_YY, store_YY_LF, store_β,  store_Σt, store_Σt_inv, store_h, store_s2_h,store_σ_h2,store_ρ, store_eh, M_zsp, z_vec, Sm_bit, freq_mix_tp, fdatesHF, fdatesLF,M_inter_agg = CPZ2023iniw(dataHF_tab,dataLF_tab,var_list,set_struct,hyp_struct);
+    out_struct = VAROutput_Blagov2027(store_β,store_Σt_inv,store_YY, M_zsp, z_vec, Sm_bit,freq_mix_tp,store_Σt, store_h, store_s2_h,store_ρ,store_σ_h2,store_eh,M_inter_agg, fdatesHF, fdatesLF);
     return out_struct
 end
 
@@ -37,80 +37,108 @@ end
 
 
 @doc raw"""
-    BEAVARs.CPZ2023(dataHF_tab::TimeArray{Typ,N,D,A},dataLF_tab::TimeArray{Typ,N,D,A},varOrder::Array{Symbol,1},set_struct::BVARmodelSetup,hyp_struct::BVARmodelHypSetup)
+    BEAVARs.CPZ2023iniw(dataHF_tab::TimeArray{Typ,N,D,A},dataLF_tab::TimeArray{Typ,N,D,A},varOrder::Array{Symbol,1},set_struct::BVARmodelSetup,hyp_struct::BVARmodelHypSetup)
     
-    Estimate Chan, Zhu, Poon 2023 using a  Minnesota-based independent Normal-Wishart prior
+    Estimate a mixed-frequency VAR with a Minnesota-based independent Normal-Wishart prior using the precision based sampler from Chan, Zhu, Poon (2023), JoE
 """
-function CPZ2023dev(dataHF_tab::TimeArray{Typ,N,D,A},dataLF_tab::TimeArray{Typ,N,D,A},varOrder::Array{Symbol,1},set_struct::BVARmodelSetup,hyp_struct::BVARmodelHypSetup) where {Typ <: AbstractFloat, N, D, A <: AbstractArray{Typ, N}}
+function CPZ2023iniw(dataHF_tab::TimeArray{Typ,N,D,A},dataLF_tab::TimeArray{Typ,N,D,A},varOrder::Array{Symbol,1},set_struct::BVARmodelSetup,hyp_struct::BVARmodelHypSetup) where {Typ <: AbstractFloat, N, D, A <: AbstractArray{Typ, N}}
     @unpack p, n_burn,n_save, const_loc, n_fcst, prior_RW = set_struct
     ndraws = n_save+n_burn;
     nmdraws = 10;               # given a draw from the parameters to draw multiple time from the distribution of the missing data for better confidence intervals
 
-    fdataHF_tab, z_tab, freq_mix_tp, datesHF, varNamesLF, fvarNames = BEAVARs.CPZ_prep_TimeArrays(dataLF_tab,dataHF_tab,varOrder,prior_RW,n_fcst)
-
-    YYwNA = values(fdataHF_tab);
-    YY = deepcopy(YYwNA);
-    Tf,n = size(YY);
-    
-    B_draw, structB_draw, Σt_inv, b0 = BEAVARs.initParamMatrices(n,p,const_loc) 
-
-    YYt, Y0, longyo, nm, H_B, H_B_CI, strctBdraw_LI, Σ_inv, Σt_LI, Σp_invsp, Σpt_ind, Xb, cB, cB_b0_LI, Smsp, Sosp, Sm_bit, Gm, Go, GΣ, Kym,Σt_ns_CI, Σpt_ind_CI = BEAVARs.CPZ_initMatrices_v2(YY,structB_draw,b0,Σt_inv,p);
-    
-    M_zsp, z_vec, T_z, MOiM, MOiz = BEAVARs.CPZ_makeM_inter(z_tab,YYt,Sm_bit,datesHF,varNamesLF,fvarNames,freq_mix_tp,nm,Tf);
-
-    
+    fdataHF_tab, z_tab, freq_mix_tp, datesHF, varNamesLF, fvarNames, HF_n_fcst = BEAVARs.CPZ_prep_TimeArrays(dataLF_tab,dataHF_tab,varOrder,prior_RW,n_fcst)
     fdatesHF = timestamp(fdataHF_tab);
     fdatesLF = collect(timestamp(z_tab)[1]:Month(freq_mix_tp[2]):fdatesHF[end]);
     M_inter_agg = BEAVARs.CPZ_makeM_inter_agg(fdatesLF,fdatesHF,freq_mix_tp);
-    
-    # YY has missing values so we need to draw them once to be able to initialize matrices and prior values
-    YYt = BEAVARs.CPZ_draw_wz!(YYt,longyo,Y0,cB,B_draw,structB_draw,strctBdraw_LI,Σt_inv,Σt_LI,Xb,cB_b0_LI,Σ_inv,p,n,Sm_bit,Smsp,Sosp,nm,MOiM,MOiz,Gm,Go,H_B,GΣ,Kym,H_B_CI,nmdraws,Σt_ns_CI);
-    
-    # we will be updating the priors for variables with many missing observations (>25%)
-    updP_vec = sum(Sm_bit,dims=2).>size(Sm_bit,2)*0.25;
-    
-    # Initialize matrices for updating the parameter draws from CPZ_iniv  
-    # ------------------------------------
-    Y, X, T, deltaP, sigmaP, mu_prior, S_0, S_0_diag_view, Vβ_inv, Vβ_inv_diag_view, XtΣ_inv_den, XtΣ_inv_X, Xsur_den, Xsur_CI, X_CI, k, K_β, cholK_β, β_draw, intercept = CPZ_init_Minn(YY,p)
 
-    # Estimate the prior using the first draw
-    (idx_kappa1,idx_kappa2, Vβ_vec, βMinn) = BEAVARs.prior_Minn(n,p,sigmaP,hyp_struct,prior_RW);
+    YYwNA   = values(fdataHF_tab);
 
-    # Update the initialized matrices
-    Vβ_inv_diag_view[:] = 1.0./Vβ_vec;                # update the diagonal of Vβ_inv
+    YY      = deepcopy(YYwNA);
+    Tf,n    = size(YY);
+    YYt     = (YY');                # this is just another name for YY, so if we update this, we update YY
+    vYYt    = vec(YYt);             # this as well is connected all to YY
 
-    # prepare matrices for storage
+    k       = n*p+1;                #
+    Sm_bit  = isnan.(YYwNA');       # we should only call this in the beginning
+    So_bit  = .!isnan.(YYwNA');     # we should only call this in the beginning
+    nm      = sum(Sm_bit);          # the number of missing values
+    longyo  = vYYt[vec(So_bit)];    # observed values, should not change ever
+
+    M_zsp, z_vec, T_z, MOiM, MOiz = BEAVARs.CPZ_makeM_inter(z_tab,YYt,Sm_bit,datesHF,varNamesLF,fvarNames,freq_mix_tp,nm,Tf);
+
+    Y0 = @views YY[1:p,:];     # this is just a view, so if we update YY, we update this
+    if any(isnan.(Y0))
+        Y0[isnan.(Y0)]=zeros(size(Y0[isnan.(Y0)],1)); # for the first pass only remove NaNs for zeroes
+        # consider changing this and drawing them somehow maybe? Note that they are drawn again 
+        # print("NaNs found in Y0, replaced with zeros");
+    end
+
+
+    # initialize the precision based sampler structure
+    pbsi_struct = BEAVARs.init_pbsi_struct(YYt, Sm_bit, So_bit, n,p,const_loc,Tf, nm, nmdraws, MOiM, MOiz)
+
+    # draw with the precision based sampler with uninformative parameters (zeros) to fill missings for the parameter initialization
+    BEAVARs.pbsi_draw_wz!(YYt,longyo,Y0,pbsi_struct,p,n,Sm_bit,nm,nmdraws,Tf);
+
+
+    # initialize the priors, drop any forecast to not use it for setting priors
+    ~, X, T, ~, sigmaP_ar4, betaOLS_ar4, priorMinn_struct, β_hat_bb_struct, csv_Σt_struct, csv_h_struct = BEAVARs.init_Minn_csv(YY[1:end-HF_n_fcst,:],set_struct,hyp_struct);
+
+    # make a view to the actual dependent variables. These will be updated as we update YYt
+    YYs     = @view YY[1:end-HF_n_fcst,:];              # drop the forecast to not use it for priors or parameter estimation
+    Y       = @view YYs[p+1:end,:];
+    vecYt   = vec(Y');
+
+    # prepare matrices for saving
     store_YY    = zeros(Tf,n,n_save);
-    store_β     = zeros(n^2*p+n,n_save);
-    store_Σt_inv= zeros(n,n,n_save);
-    store_Σt    = zeros(n,n,n_save);
+    store_β = zeros(n^2*p+n,n_save);
+    store_Σt = zeros(n,n,n_save);
+    store_Σt_inv = zeros(n,n,n_save);
+    store_h = zeros(T,n_save);
+    store_s2_h = zeros(T,n_save);
+    store_ρ = zeros(n_save,);
+    store_σ_h2 = zeros(n_save,); 
+    store_eh = zeros(T,n_save);
 
-    μ_yBar = zeros(nm,)
-    KymBar = similar(Kym);
-    mdraws = zeros(nm,nmdraws)
-    draw_tmp = zeros(nm)
-    μ_y = zeros(nm,);
-    long_pr = similar(cB);
-    
-    pbsi_struct = PrecisionBasedSamplerInputs(structB_draw, H_B, Σt_inv, Σ_inv, cB, long_pr, μ_y, μ_yBar, mdraws, Gm, Go, GΣ,  Kym, KymBar, Smsp,Sosp,  MOiM,  MOiz);
+    for ii = 1:ndraws
 
-    for ii in 1:ndraws
-        # draw of the missing values
-        BEAVARs.CPZdev_draw_wz!(YYt,longyo,Y0,pbsi_struct,B_draw,strctBdraw_LI,Σt_LI,cB_b0_LI,p,n,Sm_bit,nm,H_B_CI,nmdraws,Σt_ns_CI);
-        # BEAVARs.CPZ_draw_wz_lessAlloc!(YYt,longyo,Y0,cB,B_draw,structB_draw,strctBdraw_LI,Σt_inv,Σt_LI,Xb,cB_b0_LI,Σ_inv,p,n,Sm_bit,Smsp,Sosp,MOiM,MOiz,Gm,Go,H_B,GΣ,Kym,KymBar,H_B_CI,nmdraws,μ_yBar,mdraws,draw_tmp)
-        
-        # draw of the parameters
-        beta,b0,B_draw,Σt_inv,structB_draw,Σt = BEAVARs.CPZ_iniw!(YY,p,hyp_struct,n,k,b0,B_draw,Σt_inv,structB_draw,Σp_invsp,Σpt_ind,Y,X,T,Xsur_den,Xsur_CI,X_CI,XtΣ_inv_den,XtΣ_inv_X,Vβ_inv,βMinn,K_β,cholK_β,β_draw,S_0, Σpt_ind_CI);
+        # Draw YYt using the precision based sampler, updating YYs, Y, vecYt
+        BEAVARs.pbsi_draw_wz!(YYt,longyo,Y0,pbsi_struct,p,n,Sm_bit,nm,nmdraws,Tf);
+
+        # update X by mutation, exclude the forecast from the 
+        mlagL!(YYs,X,p,n);
+
+        # update β_hat_bb_struct
+        β_hat_bb_struct.Xsur.X .= X;      # Xsur  
+        BEAVARs.update_Σf_inv_bb!(β_hat_bb_struct.Σ_inv_bb,csv_Σt_struct.Σt_inv,T,n);   # Σ_inv_bb (if you want csv, replace this function with BEAVARs.update_Σ_inv_bb!)
+
+        # draw β
+        BEAVARs.Chan2020_draw_βsur_bb!(priorMinn_struct,β_hat_bb_struct,X,vecYt);
+
+        # draw Σt and calculate Σt_inv
+        BEAVARs.CCK2016_drawΣtsur!(vecYt,β_hat_bb_struct,csv_Σt_struct,csv_h_struct,n,T);
+
+        # update pbsi_struct with β and Σt_inv
+        pbsi_struct.Σt_inv .= csv_Σt_struct.Σt_inv;
+        pbsi_struct.B_draw .= reshape(β_hat_bb_struct.β_draw,k,n)';
+        @views pbsi_struct.structB_draw[:,n+1:end] .= pbsi_struct.B_draw[:,const_loc+1:end];
+
 
         if ii>n_burn
-            store_β[:,ii-n_burn]  = beta;
             store_YY[:,:,ii-n_burn]  = YY;
-            store_Σt_inv[:,:,ii-n_burn]    = Σt_inv;
-            store_Σt[:,:,ii-n_burn] = Σt;
+            store_β[:,ii-n_burn] = β_hat_bb_struct.β_draw;
+            store_Σt_inv[:,:,ii-n_burn] = csv_Σt_struct.Σt_inv;
+            store_Σt[:,:,ii-n_burn] = csv_Σt_struct.Σt;
+            store_h[:,ii-n_burn] = csv_h_struct.h;
+            store_s2_h[:,ii-n_burn] = csv_h_struct.s2_h;
+            store_ρ[ii-n_burn,] = csv_h_struct.ρ_vec[1];
+            store_σ_h2[ii-n_burn,] = csv_h_struct.σ_h2_vec[1];
+            store_eh[:,ii-n_burn] = csv_h_struct.eh;
         end
+
     end
     store_YY_LF = mapslices(x->M_inter_agg*x,store_YY,dims=1:2);
-    return store_YY, store_YY_LF, store_β, store_Σt_inv, M_zsp, z_vec, Sm_bit, store_Σt, freq_mix_tp, fdatesHF, fdatesLF
+    return store_YY, store_YY_LF, store_β, store_Σt, store_Σt_inv, store_h, store_s2_h, store_ρ, store_σ_h2,store_eh, M_zsp, z_vec, Sm_bit, freq_mix_tp, fdatesHF, fdatesLF, M_inter_agg
 end
 
 
@@ -125,11 +153,11 @@ Generate data for a mixed-frequency VAR. Uses Time Arrays from the TimeSeries pa
     dataLF_tab: TimeArray with your low-frequency variables (quarterly or yearly, respectively)
     var_list:   the variable order. Note that the functions that call these variables allow this to be optional.
 
-See also `dataCPZ2023`.
+See also `dataMFVAR_2freq`.
 
 """
 function makeDataSetup(::CPZ2023iniw_type,dataHF_tab::TimeArray, dataLF_tab::TimeArray; var_list =  [colnames(dataLF_tab); colnames(dataHF_tab)])
-    return dataCPZ2023(dataHF_tab, dataLF_tab, var_list)
+    return dataMFVAR_2freq(dataHF_tab, dataLF_tab, var_list)
 end
 
 
@@ -137,147 +165,50 @@ end
 @doc raw"""
     Draw with restrictions
 """
-function CPZdev_draw_wz!(YYt,longyo,Y0,pbsi_struct,B_draw,strctBdraw_LI,Σt_LI,cB_b0_LI,p,n,Sm_bit,nm,H_B_CI,nmdraws,Σt_ns_CI);
-    @time begin
-    # updating cB
-    BEAVARs.CPZdev_update_cB!(pbsi_struct.cB,B_draw[:,2:end],B_draw[:,1],Y0,cB_b0_LI,p,n)
-
-    # updating H_B
-    @views pbsi_struct.H_B[H_B_CI] = -pbsi_struct.structB_draw[strctBdraw_LI];
-    # updating Σ_invFsp
-    #  Σ_inv.nzval[:] = Σt_inv[Σt_LI];
-    @views pbsi_struct.Σ_inv[Σt_ns_CI] = pbsi_struct.Σt_inv[Σt_LI];
-
-
-    mul!(pbsi_struct.Gm,pbsi_struct.H_B,pbsi_struct.Smsp);
-    mul!(pbsi_struct.Go,pbsi_struct.H_B,pbsi_struct.Sosp);
-    mul!(pbsi_struct.GΣ,pbsi_struct.Gm',pbsi_struct.Σ_inv);
-    mul!(pbsi_struct.Kym,pbsi_struct.GΣ,pbsi_struct.Gm);
-    CL = cholesky(Hermitian(pbsi_struct.Kym));
-    pbsi_struct.long_pr[:,] = (pbsi_struct.cB-pbsi_struct.Go*longyo);
-    pbsi_struct.μ_y[:,] = CL.U\(CL.U'\(pbsi_struct.GΣ*pbsi_struct.long_pr));
-    end
-
-    pbsi_struct.KymBar[:,:] = pbsi_struct.MOiM + pbsi_struct.Kym;
-    CLBar = cholesky(Hermitian(pbsi_struct.KymBar))
-    pbsi_struct.μ_yBar[:,] = CLBar.U\(CLBar.U'\(pbsi_struct.MOiz + pbsi_struct.Kym*pbsi_struct.μ_y))
-
-    # mdraws = zeros(nm,nmdraws)
-    for i_draw in 1:nmdraws
-        pbsi_struct.mdraws[:,i_draw] = pbsi_struct.μ_yBar +  ldiv!(CLBar.U,randn(nm,))
-    end    
-    YYt[Sm_bit] = dropdims(median(pbsi_struct.mdraws,dims=2),dims=2);
-    return YYt
-end
-
-
-@doc raw"""
-    Draw with restrictions
-"""
-function CPZnew_draw_wz!(YYt,longyo,Y0,pbsi_struct,B_draw,strctBdraw_LI,Σt_LI,cB_b0_LI,p,n,Sm_bit,nm,H_B_CI,nmdraws,Σt_ns_CI);
-    @unpack structB_draw, H_B, Σt_inv, Σ_inv, cB, long_pr, μ_y, μ_yBar, mdraws, Gm, Go, GΣ, Kym, KymBar, Smsp, Sosp, MOiM, MOiz = pbsi_struct
+function pbsi_draw_wz!(YYt,longyo,Y0,pbsiNew_struct,p,n,Sm_bit,nm,nmdraws,Tf);
+    @unpack structB_draw, B_draw, HB,Σf_inv_bb, Σt_inv,  cB, long_pr, μ_y, μ_yBar, mdraws, Gm, Go, GΣ, Kym, KymBar, Smsp, Sosp, MOiM, MOiz = pbsiNew_struct
 
     # updating cB
-    BEAVARs.CPZdev_update_cB!(cB,B_draw[:,2:end],B_draw[:,1],Y0,cB_b0_LI,p,n)
-
-    # updating H_B
-    @views H_B[H_B_CI] = -structB_draw[strctBdraw_LI];
-    # updating Σ_invFsp
-    #  Σ_inv.nzval[:] = Σt_inv[Σt_LI];
-    @views Σ_inv[Σt_ns_CI] = Σt_inv[Σt_LI];
-
-
-    mul!(Gm,H_B,Smsp);
-    mul!(Go,H_B,Sosp);
-    mul!(GΣ,Gm',Σ_inv);
-    mul!(Kym,GΣ,Gm);
-    CL = cholesky(Hermitian(Kym));
-    long_pr[:,] = (cB-Go*longyo);
-    μ_y[:,] = CL.U\(CL.U'\(GΣ*long_pr));
-
-
-    KymBar[:,:] = MOiM + Kym;
-    CLBar = cholesky(Hermitian(KymBar))
-    μ_yBar[:,] = CLBar.U\(CLBar.U'\(MOiz + Kym*μ_y))
-
-    # mdraws = zeros(nm,nmdraws)
-    for i_draw in 1:nmdraws
-        mdraws[:,i_draw] = μ_yBar +  ldiv!(CLBar.U,randn(nm,))
-    end    
-    YYt[Sm_bit] = dropdims(median(mdraws,dims=2),dims=2);
-    return YYt
-end
-
-
-
-@doc raw"""
-    Draw with restrictions
-"""
-function CPZnewer_draw_wz!(YYt,longyo,Y0,pbsiNew_struct,B_draw,cB_b0_LI,p,n,Sm_bit,nm,nmdraws,Tf);
-    @unpack structB_draw, HB, Σt_inv, Σf_inv_bb, cB, long_pr, μ_y, μ_yBar, mdraws, Gm, Go, GΣ, Kym, KymBar, Smsp, Sosp, MOiM, MOiz = pbsiNew_struct
-    @time begin
-    # updating cB
-    BEAVARs.CPZ_update_cB!(cB,B_draw[:,2:end],B_draw[:,1],Y0,cB_b0_LI,p,n);
+    BEAVARs.update_cB!(cB,B_draw,Y0,Tf-p,n,p);
 
     # updating H_B
     HB.mBI .= -structB_draw;
 
-    # updating the full Σf_inv_bb
+    # updating the Σf_inv_bb. If you use the other function here with h, you can have csv easily 
     BEAVARs.update_Σf_inv_bb!(Σf_inv_bb,Σt_inv,Tf,n);
 
 
     mul!(Gm,HB,Smsp);
     mul!(Go,HB,Sosp);
     mul!(GΣ,Gm',Σf_inv_bb);
-    mul!(Kym,GΣ,Gm);
+    mul!(Kym,GΣ,Gm);   
+    
     CL = cholesky(Hermitian(Kym));
-    long_pr[:,] = (cB-Go*longyo);
-    μ_y[:,] = CL.U\(CL.U'\(GΣ*long_pr));
+    mul!(long_pr,Go,longyo);
+    long_pr .= cB .- long_pr;
+    μ_y .= ldiv!(CL.U,ldiv!(CL.U',mul!(μ_y,GΣ,long_pr)));   # eq. 12
+  
 
-    end
-    KymBar[:,:] = MOiM + Kym;
-    CLBar = cholesky(Hermitian(KymBar))
-    μ_yBar[:,] = CLBar.U\(CLBar.U'\(MOiz + Kym*μ_y))
+    KymBar .= MOiM .+ Kym;      
+    CLBar = cholesky!(Hermitian(KymBar))
+    μ_yBar .= ldiv!(CLBar.U,ldiv!(CLBar.U',MOiz .+ mul!(μ_yBar,Kym,μ_y)));   # eq. 12
 
-    # mdraws = zeros(nm,nmdraws)
     for i_draw in 1:nmdraws
         mdraws[:,i_draw] = μ_yBar +  ldiv!(CLBar.U,randn(nm,))
     end    
     YYt[Sm_bit] = dropdims(median(mdraws,dims=2),dims=2);
-    return YYt
-end
-
-
-struct PrecisionBasedSamplerInputs{T <: AbstractFloat, N} 
-    structB_draw::Array{T, N}   
-    H_B::Array{T, N}            
-    Σt_inv::Array{T, N}         
-    Σ_inv::Array{T,N}
-    cB::Array{T, 1}             
-    long_pr::Array{T, 1}
-    μ_y::Array{T, 1}            
-    μ_yBar::Array{T,1}
-    mdraws::Array{T,N}
-    Gm::Array{T,N}
-    Go::Array{T,N}
-    GΣ::Array{T,N}
-    Kym::Array{T,N}
-    KymBar::Array{T,N}
-    Smsp::Array{Bool,N}
-    Sosp::Array{Bool,N}
-    MOiM::Array{T,N}
-    MOiz::Array{T,1}
 end
 
 
 
 struct PrecisionBasedSamplerInputs_dev{T <: AbstractFloat, N} 
     structB_draw::Array{T, N}   
-    HB::HBMatrix{T, Array{T,N}}            
+    B_draw::Array{T,N}
+    HB::HBMatrix{T, Array{T,N}}    
+    Σf_inv_bb::BlockBandedMatrix{T}        
     Σt_inv::Array{T, N}         
-    Σf_inv_bb::BlockBandedMatrix{T}
     cB::Array{T, 1}             
-    long_pr::Array{T, 1}
+    long_pr::Array{T, 1}        # temporary array
     μ_y::Array{T, 1}            
     μ_yBar::Array{T,1}
     mdraws::Array{T,N}
@@ -324,74 +255,23 @@ end
 
 
 
+
 @doc raw"""
-    CPZ_initMatrices_v3(YY,structB_draw,b0,Σt_inv,p)
+    init_pbsi_struct(n,p,const_loc,Tf)
 
     We will use this function to compare to the newer iteration whether we can get performance gains as well as for correctness
 """
-function CPZ_initMatrices_v3(YY,YYt,vYYt,Tf,n,nm,Sm_bit,So_bit,structB_draw,b0,Σt_inv,p,nmdraws,MOiM,MOiz)
-    Tfn = Tf*n;
-    longyo = vYYt[vec(So_bit)];
-
-    Y0 = @views YY[1:p,:]
-    if any(isnan.(Y0))
-        Y0[isnan.(Y0)]=zeros(size(Y0[isnan.(Y0)],1)); # for the first pass remove NaNs for zeroes
-        # print("NaNs found in Y0, replaced with zeros");
-    end
-
-    indC_nan_wide = findall(Sm_bit) #  Cartesian indices of missing values
-    # indC_non_wide = findall(!isnan,YYt)  # Cartesian indices of not missing values
-    indC_non_wide = findall(So_bit)  # Cartesian indices of not missing values
-
-    # convert between linear and cartesian indices
-    indL_all = LinearIndices(YYt);
-    indL_nan_wide = indL_all[indC_nan_wide] # are the linear indices of NaN values
-    indL_non_wide = indL_all[indC_non_wide] # are the linear indices of non NaN values
-        
-
-    S_full = I(Tf*n);
-    Sm = S_full[:,indL_nan_wide]; # Sm, selection matrix selecting the missing values
-    So = S_full[:,indL_non_wide]; # So, selection matrix selecting hte observed values
-    Smsp = Sm;            # sparse Sm
-    Sosp = So;            # sparse So
-
-    # Initialize matrices
-    H_B, H_B_CI, strctBdraw_LI = BEAVARs.makeBlkDiag_ns(Tfn,n,p, -structB_draw);
-    Σ_inv, Σt_ns_CI, Σt_ns_LI = BEAVARs.makeBlkDiag_ns(Tfn,n,0,Σt_inv);   # make a non-sparse matrix if needed                         # this is ( I(Tf*n) ⊗ Σ-1 )
-    Σp_inv, Σpt_ind_CI, Σpt_ind_ns_LI = BEAVARs.makeBlkDiag_ns(Tfn-n*p,n,0,Σt_inv);                # this is ( I(T*n) ⊗ Σ-1 ), the difference is that this includes the 0,-1,...,-p lags
-    cB_b0_LI = repeat(1:n,div(Tfn-n*p-n+1+n,n));  # this repeats [1:n] so that we can update cB[indicesAfter Y_0,Y_{-1}, ..., Ymp] = b0[cB_b0_LI]
-    Xb = sparse(Matrix(1.0I, Tfn, Tfn))
-    cB = repeat(b0,Tf);
-
-    Gm = H_B*Smsp; Go = H_B*Sosp; GΣ = Gm'*Σ_inv; Kym = GΣ*Gm; # we can initialize all these and then mutate with mul!()
-    long_pr = (cB-Go*longyo);
-    μ_yBar = zeros(nm,)
-    KymBar = similar(Kym);
-    mdraws = zeros(nm,nmdraws)
-    draw_tmp = zeros(nm)
-    μ_y = zeros(nm,);
-    long_pr = similar(cB);
-
-    pbsi_struct = BEAVARs.PrecisionBasedSamplerInputs(structB_draw, H_B, Σt_inv, Σ_inv, cB, long_pr, μ_y, μ_yBar, mdraws, Gm, Go, GΣ,  Kym, KymBar, Smsp,Sosp,  MOiM,  MOiz);
+function init_pbsi_struct(YYt, Sm_bit, So_bit, n, p, const_loc, Tf, nm, nmdraws, MOiM, MOiz)
     
-    return pbsi_struct, longyo, Y0, strctBdraw_LI, Σt_ns_LI,cB_b0_LI,p,n,Sm_bit,nm,H_B_CI,nmdraws,Σt_ns_CI
-end
+    # Initialize parameter matrices
+    B_draw, structB_draw, Σt_inv, b0 = BEAVARs.initUninformParameters(n,p,const_loc) 
+    mBI = -structB_draw;
+    HB = BEAVARs.HBMatrix(mBI,Tf);
+    Σf_inv_bb = BlockBandedMatrix{Float64}(undef,ones(Int,Tf,).*n, ones(Int,Tf,).*n, (0, 0));
+    expmhf = ones(Tf,);                     # expmh and correspondingly h in csv_h_struct are only of size T, whereas for the PBS we need Tf = T+p
+    BEAVARs.update_Σf_inv_bb!(Σf_inv_bb,Σt_inv,expmhf,Tf,n);
 
-
-@doc raw"""
-    CPZ_initMatrices_v4(YY,structB_draw,b0,Σt_inv,p)
-
-    We will use this function to compare to the newer iteration whether we can get performance gains as well as for correctness
-"""
-function CPZ_initMatrices_v4(YY,YYt,vYYt,Tf,n,nm,Sm_bit,So_bit,structB_draw,b0,Σt_inv,p,nmdraws,MOiM,MOiz)
-    Tfn = Tf*n;
-    longyo = vYYt[vec(So_bit)];
-
-    Y0 = @views YY[1:p,:]
-    if any(isnan.(Y0))
-        Y0[isnan.(Y0)]=zeros(size(Y0[isnan.(Y0)],1)); # for the first pass remove NaNs for zeroes
-        # print("NaNs found in Y0, replaced with zeros");
-    end
+    # initialize matrices for the precision based sampler
 
     indC_nan_wide = findall(Sm_bit) #  Cartesian indices of missing values
     # indC_non_wide = findall(!isnan,YYt)  # Cartesian indices of not missing values
@@ -408,27 +288,19 @@ function CPZ_initMatrices_v4(YY,YYt,vYYt,Tf,n,nm,Sm_bit,So_bit,structB_draw,b0,�
     So = S_full[:,indL_non_wide]; # So, selection matrix selecting hte observed values
     Smsp = sparse(Sm);            # sparse Sm
     Sosp = sparse(So);            # sparse So
+    cB      = repeat(b0,Tf);
+    Gm      = HB*Smsp; 
+    Go      = HB*Sosp; 
+    GΣ      = Gm'*Σf_inv_bb; 
+    Kym     = GΣ*Gm; # we can initialize all these and then mutate with mul!()
+    long_pr = similar(cB);
+    μ_y     = zeros(nm,);
+    μ_yBar  = zeros(nm,);
+    KymBar  = similar(Kym);
+    mdraws  = zeros(nm,nmdraws)
 
-    # Initialize matrices
-    mBI = -structB_draw;
-    HB = BEAVARs.HBMatrix(mBI,Tf);
-    Σf_inv_bb = BlockBandedMatrix{Float64}(undef,ones(Int,Tf,).*n, ones(Int,Tf,).*n, (0, 0));
-    expmhf = ones(Tf,);                     # expmh and correspondingly h in csv_h_struct are only of size T, whereas for the PBS we need Tf = T+p
-    BEAVARs.update_Σf_inv_bb!(Σf_inv_bb,Σt_inv,expmhf,Tf,n);
-    cB_b0_LI = repeat(1:n,div(Tfn-n*p-n+1+n,n));  # this repeats [1:n] so that we can update cB[indicesAfter Y_0,Y_{-1}, ..., Ymp] = b0[cB_b0_LI]
-    Xb = sparse(Matrix(1.0I, Tfn, Tfn))
-    cB = repeat(b0,Tf);
+    pbsi_struct = BEAVARs.PrecisionBasedSamplerInputs_dev(structB_draw, B_draw, HB, Σf_inv_bb, Σt_inv, cB, long_pr, μ_y, μ_yBar, mdraws, Gm, Go, GΣ,  Kym, KymBar, Smsp,Sosp,  MOiM,  MOiz);
 
-    Gm = HB*Smsp; Go = HB*Sosp; GΣ = Gm'*Σf_inv_bb; Kym = GΣ*Gm; # we can initialize all these and then mutate with mul!()
-    long_pr = (cB-Go*longyo);
-    μ_yBar = zeros(nm,)
-    KymBar = similar(Kym);
-    mdraws = zeros(nm,nmdraws)
-    draw_tmp = zeros(nm)
-    μ_y = zeros(nm,);
-
-    pbsi_struct = BEAVARs.PrecisionBasedSamplerInputs_dev(structB_draw, HB, Σt_inv, Σf_inv_bb, cB, long_pr, μ_y, μ_yBar, mdraws, Gm, Go, GΣ,  Kym, KymBar, Smsp,Sosp,  MOiM,  MOiz);
-    
     return pbsi_struct
 end
 
@@ -469,4 +341,74 @@ function update_Σf_inv_bb!(Σf_inv_bb,Σt_inv,expmhf,Tf,n)
     for ii in 1:Tf
         copyto!(Σf_inv_bb.data, (ii - 1)*n*n + 1, diagonal_block.*expmhf[ii], 1, n*n)
     end
+end
+
+
+
+
+@doc raw"""
+    update_cB!()
+
+    Uses
+    B = [B1 B2] =  [a b e f 
+                    c d g h]
+    and populates the cB vector by taking 
+    B1*y_{-1} + B2*y_{-2}
+
+    The indices loop on line 4 can also be made to support
+    B = [B0 B1 B2]
+    structure, by omitting B0 and starting from B1 (same as above) if you use
+    Bmat[:,1+(p-io+kk)*n:(p-io+kk)*n+n]
+"""
+function update_cB!(cB,B_draw,Y0,T,n,p)
+    b0 = @view B_draw[:,1];
+    Bmat = @view  B_draw[:,2:end];
+    for io = 0:p-1
+        ytmp = zeros(n,);
+        for kk = 0:io
+            @views ytmp1 = Bmat[:,1+(p-io+kk)*n-n:(p-io+kk)*n+n-n]*Y0[p-kk,:];  # This is \sum_1^p B_j y_{t-j}. For t = 0 : cB = b0 + B_p y0
+            ytmp = ytmp+ytmp1;
+        end
+        ytmp = ytmp + b0;
+        cB[n*(p-io)-n+1 : n*(p-io)-n+n,] = ytmp;
+    end
+
+    for ii in 1:T
+        copyto!(cB, n*p + 1 + n*(ii - 1), b0, 1, n)
+    end
+    return cB
+end
+
+
+
+
+"""
+    B_draw, structB_draw, Σt_inv, b0 = initUninformParameters(n,p,intercept) 
+    
+    Initializes paramater matrices for a VAR of the form
+        B_0 y_t = b0 + B_1 y_{t-1} + ... + B_p y_{t-1} + varepsilon_t,     varepsilon_t sim N(0,Σt)
+        
+        B_0 is an identity matrix
+        B_1 is an identity matrix
+        b0, B_2, ..., B_p are zeroes
+
+    Returns:    
+        B_draw = [b0, B1, ..., Bp]; if intercept == 0, b0 is at the and and if set to -1, there is no intercept
+        structB_draw = [B_0, B1, ..., Bp]
+        Σt_inv = Σt^{-1}
+
+"""
+function initUninformParameters(n::Int,p::Int,intercept::Int) 
+    if intercept == 1
+        B_draw = [zeros(n,)  1.0*I(n) zeros(n,n*(p-1))]; b0 = B_draw[:,1];
+        structB_draw = [-1.0*I(n) B_draw[:,2:end]]
+    elseif intercept == 0
+        B_draw = [1.0*I(n) zeros(n,n*(p-1)) zeros(n,) ]; b0 = B_draw[:,end];
+        structB_draw = [-1.0*I(n) B_draw[:,1:end-1]]
+    elseif intercept == -1
+        B_draw = [1.0*I(n) zeros(n,n*(p-1))]; b0 = ones(n,).*NaN;
+        structB_draw = [-1.0*I(n) B_draw]
+    end
+    Σt  = .001*Matrix(I,n,n); Σt_inv = inv(Σt)
+    return B_draw, structB_draw, Σt_inv, b0
 end
