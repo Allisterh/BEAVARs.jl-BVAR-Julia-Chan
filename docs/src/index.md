@@ -15,9 +15,11 @@ VAR models with a single frequency:
 
  - [Chan2020minn](@ref): BVAR with classical  Minnesota prior (homoscedastic fixed variance-covariance matrix) as in Chan, J.C.C. (2020), Large Bayesian Vecotrautoregressions, P. Fuleky (Eds), _Macroeconomic Forecasting in the Era of Big Data_, 95-125, Springer, Cham, [https://doi.org/10.1007/978-3-030-31150-6](https://doi.org/10.1007/978-3-030-31150-6), see also [joshuachan.org](https://joshuachan.org) and his [pdf](https://joshuachan.org/papers/large_BVAR.pdf).
 
- - [Chan2020iniw](@ref): BVAR with Minnesota prior and an independent normal inverse Wishart (iniw) prior on the variance-covariance matrix  as in Chan, J.C.C. (2020), Large Bayesian Vecotrautoregressions, P. Fuleky (Eds), _Macroeconomic Forecasting in the Era of Big Data_, 95-125, Springer, Cham, [https://doi.org/10.1007/978-3-030-31150-6](https://doi.org/10.1007/978-3-030-31150-6), see also [joshuachan.org](https://joshuachan.org) and his [pdf](https://joshuachan.org/papers/large_BVAR.pdf).
+ - [Chan2020iniw](@ref): BVAR with classical Minnesota prior and an independent normal inverse Wishart (iniw) prior on the variance-covariance matrix  as in Chan, J.C.C. (2020), Large Bayesian Vecotrautoregressions, P. Fuleky (Eds), _Macroeconomic Forecasting in the Era of Big Data_, 95-125, Springer, Cham, [https://doi.org/10.1007/978-3-030-31150-6](https://doi.org/10.1007/978-3-030-31150-6), see also [joshuachan.org](https://joshuachan.org) and his [pdf](https://joshuachan.org/papers/large_BVAR.pdf).
 
- - [Chan2020csv](@ref): BVAR with Minnesota prior and common stochastic volatility (csv) as in Chan, J.C.C. (2020), Large Bayesian Vecotrautoregressions, P. Fuleky (Eds), _Macroeconomic Forecasting in the Era of Big Data_, 95-125, Springer, Cham, [https://doi.org/10.1007/978-3-030-31150-6](https://doi.org/10.1007/978-3-030-31150-6), see also [joshuachan.org](https://joshuachan.org) and his [pdf](https://joshuachan.org/papers/large_BVAR.pdf).
+ - [CCK2016csv](@ref) BVAR with Minnesota prior and common-stochastic volatility (csv), with the csv as in Carriero, Andrea, Todd E. Clark, and Massimiliano Marcellino. 2016. Common Drifting Volatility in Large Bayesian VARs. _Journal of Business & Economic Statistics_ 34 (3): 375–90. https://doi.org/10.1080/07350015.2015.1040116.
+
+ - [Chan2020csv](@ref): BVAR with natural conjugate and common stochastic volatility (csv) as in Chan, J.C.C. (2020), Large Bayesian Vecotrautoregressions, P. Fuleky (Eds), _Macroeconomic Forecasting in the Era of Big Data_, 95-125, Springer, Cham, [https://doi.org/10.1007/978-3-030-31150-6](https://doi.org/10.1007/978-3-030-31150-6), see also [joshuachan.org](https://joshuachan.org) and his [pdf](https://joshuachan.org/papers/large_BVAR.pdf).
 
  
 
@@ -42,7 +44,7 @@ Depth = 2
 ```
 
 #  Acknowledgmenets
-I would like to thank [Guillaume Dalle](https://github.com/gdalle). He **is not associated** with this package but went out of his way to help me get my first steps in Github and Julia optimization. Also, many users in the [Julia discourse](https://discourse.julialang.org/) helped me often when I was struggling. This community is great.
+I would like to thank the following people, who are all **not associated** with this package, but have helped me a lot throughout my Julia journey, mostly through the [Julia discourse](https://discourse.julialang.org/). [Guillaume Dalle](https://github.com/gdalle). He **is not associated** with this package but went out of his way to help me get my first steps in Github and Julia optimization. [mikmoore](https://discourse.julialang.org/u/mikmoore/summary). [stevengj](https://discourse.julialang.org/u/stevengj/summary). This community is great.
 
 # Notes on the name
 - The name BEAVARs is an obvious play of words with a misspelled version of my favourite animal.
