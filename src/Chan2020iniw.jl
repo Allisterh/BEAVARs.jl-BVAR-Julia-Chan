@@ -6,6 +6,7 @@
 #-------------------------------------
 # The Den of the beavar
 #-------------------------------------
+
 @doc raw"""
     beavar(::Chan2020iniw_type, set_struct, hyp_str, data_struct)
 
