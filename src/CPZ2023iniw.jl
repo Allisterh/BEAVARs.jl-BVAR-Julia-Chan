@@ -11,7 +11,7 @@ function beavar(::CPZ2023iniw_type, set_struct::BVARmodelSetup, hyp_struct::BVAR
     println("Hello CPZ2023iniw")
     @unpack dataHF_tab,dataLF_tab, var_list = data_struct
     store_YY, store_YY_LF, store_β,  store_Σt, store_Σt_inv, store_h, store_s2_h,store_σ_h2,store_ρ, store_eh, M_zsp, z_vec, Sm_bit, freq_mix_tp, fdatesHF, fdatesLF,M_inter_agg = CPZ2023iniw(dataHF_tab,dataLF_tab,var_list,set_struct,hyp_struct);
-    out_struct = VAROutput_Blagov2027(store_β,store_Σt_inv,store_YY, M_zsp, z_vec, Sm_bit,freq_mix_tp,store_Σt, store_h, store_s2_h,store_ρ,store_σ_h2,store_eh,M_inter_agg, fdatesHF, fdatesLF);
+    out_struct = VAROutput_Blagov2027(store_YY,store_YY_LF,store_β,store_Σt_inv, M_zsp, z_vec, Sm_bit,freq_mix_tp,store_Σt, store_h, store_s2_h,store_ρ,store_σ_h2,store_eh,M_inter_agg, fdatesHF, fdatesLF);
     return out_struct
 end
 
@@ -101,6 +101,12 @@ function CPZ2023iniw(dataHF_tab::TimeArray{Typ,N,D,A},dataLF_tab::TimeArray{Typ,
     store_eh = zeros(T,n_save);
 
     for ii = 1:ndraws
+        # updating pbsi_struct with Σt_inv.
+        BEAVARs.update_Σf_inv_bb!(pbsi_struct.Σf_inv_bb,csv_Σt_struct.Σt_inv,Tf,n);
+        
+        # update pbsi_struct with β 
+        pbsi_struct.B_draw .= reshape(β_hat_bb_struct.β_draw,k,n)';
+        @views pbsi_struct.structB_draw[:,n+1:end] .= pbsi_struct.B_draw[:,2:end];
 
         # Draw YYt using the precision based sampler, updating YYs, Y, vecYt
         BEAVARs.pbsi_draw_wz!(YYt,longyo,Y0,pbsi_struct,p,n,Sm_bit,nm,nmdraws,Tf);
@@ -108,9 +114,9 @@ function CPZ2023iniw(dataHF_tab::TimeArray{Typ,N,D,A},dataLF_tab::TimeArray{Typ,
         # update X by mutation, exclude the forecast from the 
         mlagL!(YYs,X,p,n);
 
-        # update β_hat_bb_struct
-        β_hat_bb_struct.Xsur.X .= X;      # Xsur  
-        BEAVARs.update_Σf_inv_bb!(β_hat_bb_struct.Σ_inv_bb,csv_Σt_struct.Σt_inv,T,n);   # Σ_inv_bb (if you want csv, replace this function with BEAVARs.update_Σ_inv_bb!)
+        # update β_hat_bb_struct with Σt_inv for drawing the parameters. Xsur is updated in the draw_β func
+        # β_hat_bb_struct.Xsur.X .= X;      # Xsur  
+        BEAVARs.update_Σf_inv_bb!(β_hat_bb_struct.Σ_inv_bb,csv_Σt_struct.Σt_inv,T,n);  
 
         # draw β
         BEAVARs.Chan2020_draw_βsur_bb!(priorMinn_struct,β_hat_bb_struct,X,vecYt);
@@ -118,10 +124,6 @@ function CPZ2023iniw(dataHF_tab::TimeArray{Typ,N,D,A},dataLF_tab::TimeArray{Typ,
         # draw Σt and calculate Σt_inv
         BEAVARs.CCK2016_drawΣtsur!(vecYt,β_hat_bb_struct,csv_Σt_struct,csv_h_struct,n,T);
 
-        # update pbsi_struct with β and Σt_inv
-        pbsi_struct.Σt_inv .= csv_Σt_struct.Σt_inv;
-        pbsi_struct.B_draw .= reshape(β_hat_bb_struct.β_draw,k,n)';
-        @views pbsi_struct.structB_draw[:,n+1:end] .= pbsi_struct.B_draw[:,const_loc+1:end];
 
 
         if ii>n_burn
@@ -166,17 +168,13 @@ end
     Draw with restrictions
 """
 function pbsi_draw_wz!(YYt,longyo,Y0,pbsiNew_struct,p,n,Sm_bit,nm,nmdraws,Tf);
-    @unpack structB_draw, B_draw, HB,Σf_inv_bb, Σt_inv,  cB, long_pr, μ_y, μ_yBar, mdraws, Gm, Go, GΣ, Kym, KymBar, Smsp, Sosp, MOiM, MOiz = pbsiNew_struct
-
+    @unpack structB_draw, B_draw, HB,Σf_inv_bb, cB, long_pr, μ_y, μ_yBar, mdraws, Gm, Go, GΣ, Kym, KymBar, Smsp, Sosp, MOiM, MOiz = pbsiNew_struct
+    
     # updating cB
-    BEAVARs.update_cB!(cB,B_draw,Y0,Tf-p,n,p);
+    update_cB!(cB,B_draw,Y0,Tf-p,n,p);
 
     # updating H_B
     HB.mBI .= -structB_draw;
-
-    # updating the Σf_inv_bb. If you use the other function here with h, you can have csv easily 
-    BEAVARs.update_Σf_inv_bb!(Σf_inv_bb,Σt_inv,Tf,n);
-
 
     mul!(Gm,HB,Smsp);
     mul!(Go,HB,Sosp);
@@ -205,8 +203,7 @@ struct PrecisionBasedSamplerInputs_dev{T <: AbstractFloat, N}
     structB_draw::Array{T, N}   
     B_draw::Array{T,N}
     HB::HBMatrix{T, Array{T,N}}    
-    Σf_inv_bb::BlockBandedMatrix{T}        
-    Σt_inv::Array{T, N}         
+    Σf_inv_bb::BlockBandedMatrix{T}  
     cB::Array{T, 1}             
     long_pr::Array{T, 1}        # temporary array
     μ_y::Array{T, 1}            
@@ -268,7 +265,7 @@ function init_pbsi_struct(YYt, Sm_bit, So_bit, n, p, const_loc, Tf, nm, nmdraws,
     mBI = -structB_draw;
     HB = BEAVARs.HBMatrix(mBI,Tf);
     Σf_inv_bb = BlockBandedMatrix{Float64}(undef,ones(Int,Tf,).*n, ones(Int,Tf,).*n, (0, 0));
-    expmhf = ones(Tf,);                     # expmh and correspondingly h in csv_h_struct are only of size T, whereas for the PBS we need Tf = T+p
+    expmhf = ones(Tf,);                     # expmh and correspondingly h in csv_h_struct are only of size T, whereas for the PBS we need T+p+hf_n_fcast
     BEAVARs.update_Σf_inv_bb!(Σf_inv_bb,Σt_inv,expmhf,Tf,n);
 
     # initialize matrices for the precision based sampler
@@ -299,7 +296,7 @@ function init_pbsi_struct(YYt, Sm_bit, So_bit, n, p, const_loc, Tf, nm, nmdraws,
     KymBar  = similar(Kym);
     mdraws  = zeros(nm,nmdraws)
 
-    pbsi_struct = BEAVARs.PrecisionBasedSamplerInputs_dev(structB_draw, B_draw, HB, Σf_inv_bb, Σt_inv, cB, long_pr, μ_y, μ_yBar, mdraws, Gm, Go, GΣ,  Kym, KymBar, Smsp,Sosp,  MOiM,  MOiz);
+    pbsi_struct = BEAVARs.PrecisionBasedSamplerInputs_dev(structB_draw, B_draw, HB, Σf_inv_bb, cB, long_pr, μ_y, μ_yBar, mdraws, Gm, Go, GΣ,  Kym, KymBar, Smsp,Sosp,  MOiM,  MOiz);
 
     return pbsi_struct
 end

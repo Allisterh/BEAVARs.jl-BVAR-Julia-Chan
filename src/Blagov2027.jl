@@ -14,8 +14,8 @@ end
 function beavar(::Blagov2027_type, set_struct, hyp_struct, data_struct)
     println("Hello Blagov2027")
     @unpack dataHF_tab,dataLF_tab, var_list = data_struct
-    store_β, store_Σt_inv, store_YY, M_zsp, z_vec, Sm_bit, freq_mix_tp, store_Σt, store_h, store_s2_h, store_ρ, store_σ_h2, store_eh, M_inter_agg, fdatesHF, fdatesLF = Blagov2027(dataHF_tab,dataLF_tab,var_list,set_struct,hyp_struct)    
-    out_struct = VAROutput_Blagov2027(store_β, store_Σt_inv, store_YY, M_zsp, z_vec, Sm_bit, freq_mix_tp, store_Σt, store_h, store_s2_h, store_ρ, store_σ_h2, store_eh, M_inter_agg, fdatesHF, fdatesLF)
+    store_YY, store_YY_LF, store_β,  store_Σt, store_Σt_inv, store_h, store_s2_h,store_σ_h2,store_ρ, store_eh, M_zsp, z_vec, Sm_bit, freq_mix_tp, fdatesHF, fdatesLF,M_inter_agg = Blagov2027(dataHF_tab,dataLF_tab,var_list,set_struct,hyp_struct)    
+    out_struct = VAROutput_Blagov2027(store_YY,store_YY_LF,store_β,store_Σt_inv, M_zsp, z_vec, Sm_bit,freq_mix_tp,store_Σt, store_h, store_s2_h,store_ρ,store_σ_h2,store_eh,M_inter_agg, fdatesHF, fdatesLF);
     return out_struct
 end
 
@@ -76,100 +76,117 @@ Implements the mixed-frequency BVAR model as in Blagov et al. (2025)
 
 # Description
 The function implements the mixed-frequency BVAR model as in Blagov et al. (2027).
-# Reference
-Blagov, S., Giannone, D., Lenza, M., Modugno, M. (2025), Mixed-Frequency Bayesian VARs with Stochastic Volatility: Methodology and Macroeconomic Applications, Journal of Econometrics, forthcoming.
 """
-function Blagov2027(dataHF_tab::TimeArray{Typ,Ntyp,Dtyp,Atyp},dataLF_tab::TimeArray{Typ,Ntyp,Dtyp,Atyp},varOrder::Array{Symbol,1},varSetup::BVARmodelSetup,hypSetup::BVARmodelHypSetup) where {Typ <: AbstractFloat, Ntyp, Dtyp, Atyp <: AbstractArray{Typ, Ntyp}}
-    @unpack ρ, σ_h2, v_h0, S_h0, ρ_0, V_ρ = hypSetup
-    @unpack p, n_save, n_burn, n_fcst, const_loc, prior_RW = varSetup
+function Blagov2027(dataHF_tab::TimeArray{Typ,Ntyp,Dtyp,Atyp},dataLF_tab::TimeArray{Typ,Ntyp,Dtyp,Atyp},varOrder::Array{Symbol,1},set_struct::BVARmodelSetup,hyp_struct::BVARmodelHypSetup) where {Typ <: AbstractFloat, Ntyp, Dtyp, Atyp <: AbstractArray{Typ, Ntyp}}
+    @unpack p, n_burn,n_save, const_loc, n_fcst, prior_RW = set_struct
     ndraws = n_save+n_burn;
-    # nmdraws = 10;               # given a draw from the parameters to draw multiple time from the distribution of the missing data for better confidence intervals
+    nmdraws = 10;               # given a draw from the parameters to draw multiple time from the distribution of the missing data for better confidence intervals
 
-    fdataHF_tab, z_tab, freq_mix_tp, datesHF, varNamesLF, fvarNames = BEAVARs.CPZ_prep_TimeArrays(dataLF_tab,dataHF_tab,varOrder,prior_RW,n_fcst)
-
-    YYwNA = values(fdataHF_tab);
-    YY = deepcopy(YYwNA);
-    Tf,n = size(YY);
-    
-    B_draw, structB_draw, Σt_inv, b0 = BEAVARs.initParamMatrices(n,p,const_loc) 
-    
-    YYt, Y0, longyo, nm, H_B, H_B_CI, strctBdraw_LI, Σ_invsp, Σt_LI, Σp_invsp, Σpt_ind, Xb, cB, cB_b0_LI, Smsp, Sosp, Sm_bit, Gm, Go, GΣ, Kym = BEAVARs.CPZ_initMatrices(YY,structB_draw,b0,Σt_inv,p);
-    
-    M_zsp, z_vec, T_z, MOiM, MOiz = BEAVARs.CPZ_makeM_inter(z_tab,YYt,Sm_bit,datesHF,varNamesLF,fvarNames,freq_mix_tp,nm,Tf);
-    
-    
-    
+    fdataHF_tab, z_tab, freq_mix_tp, datesHF, varNamesLF, fvarNames, n_fcst_hf = BEAVARs.CPZ_prep_TimeArrays(dataLF_tab,dataHF_tab,varOrder,prior_RW,n_fcst)
     fdatesHF = timestamp(fdataHF_tab);
     fdatesLF = collect(timestamp(z_tab)[1]:Month(freq_mix_tp[2]):fdatesHF[end]);
     M_inter_agg = BEAVARs.CPZ_makeM_inter_agg(fdatesLF,fdatesHF,freq_mix_tp);
-    
-    # YY has missing values so we need to draw them once to be able to initialize matrices and prior values
-    cB,H_B,Σ_invsp  = BEAVARs.Blagov2027_updCPZ!(cB,H_B,Σ_invsp,B_draw,structB_draw,Σt_inv,Y0,cB_b0_LI,p,n,H_B_CI,strctBdraw_LI,Σt_LI);
-    YYt             = BEAVARs.Blagov2027_draw_wz!(YYt,longyo,cB,Σ_invsp,Sm_bit,Smsp,Sosp,nm,MOiM,MOiz,Gm,Go,H_B,GΣ,Kym);
-    
-        
-    # Initialize matrices for updating the parameter draws from CPZ_iniv  
-    # ------------------------------------
-    Y, X, T, k, sigmaP, S_0, Σ, A_0, V_Ainv, v_0, H_ρ,h,eh,Ωinv, dg_ind_Ωinv, VAinvDA0, AVAinvA, intercept   = BEAVARs.Blagov2027_initcsv(YY,p,hypSetup,prior_RW);
-    
-    (deltaP, sigmaP, mu_prior)  = trainPriors(YY,p);                         # do OLS to initialize priors
-    # for updating the priors
-    updP_vec = sum(Sm_bit,dims=2).>size(Sm_bit,2)*0.25;
 
-    # prepare matrices for storage
-       
+    YYwNA   = values(fdataHF_tab);
+
+    YY      = deepcopy(YYwNA);
+    Tf,n    = size(YY);
+    YYt     = (YY');                # this is just another name for YY, so if we update this, we update YY
+    vYYt    = vec(YYt);             # this as well is connected all to YY
+
+    k       = n*p+1;                #
+    Sm_bit  = isnan.(YYwNA');       # we should only call this in the beginning
+    So_bit  = .!isnan.(YYwNA');     # we should only call this in the beginning
+    nm      = sum(Sm_bit);          # the number of missing values
+    longyo  = vYYt[vec(So_bit)];    # observed values, should not change ever
+
+    M_zsp, z_vec, T_z, MOiM, MOiz = BEAVARs.CPZ_makeM_inter(z_tab,YYt,Sm_bit,datesHF,varNamesLF,fvarNames,freq_mix_tp,nm,Tf);
+
+    Y0 = @views YY[1:p,:];     # this is just a view, so if we update YY, we update this
+    if any(isnan.(Y0))
+        Y0[isnan.(Y0)]=zeros(size(Y0[isnan.(Y0)],1)); # for the first pass only remove NaNs for zeroes
+        # consider changing this and drawing them somehow maybe? Note that they are drawn again 
+        # print("NaNs found in Y0, replaced with zeros");
+    end
+
+
+    # initialize the precision based sampler structure
+    pbsi_struct = BEAVARs.init_pbsi_struct(YYt, Sm_bit, So_bit, n,p,const_loc,Tf, nm, nmdraws, MOiM, MOiz)
+
+    # draw with the precision based sampler with uninformative parameters (zeros) to fill missings for the parameter initialization
+    BEAVARs.pbsi_draw_wz!(YYt,longyo,Y0,pbsi_struct,p,n,Sm_bit,nm,nmdraws,Tf);
+
+
+    # initialize the priors, drop any forecast to not use it for setting priors
+    ~, X, T, ~, sigmaP_ar4, betaOLS_ar4, priorMinn_struct, β_hat_bb_struct, csv_Σt_struct, csv_h_struct = BEAVARs.init_Minn_csv(YY[1:end-n_fcst_hf,:],set_struct,hyp_struct);
+
+    # make a view to the actual dependent variables. These will be updated as we update YYt
+    YYs     = @view YY[1:end-n_fcst_hf,:];              # drop the forecast to not use it for priors or parameter estimation
+    Y       = @view YYs[p+1:end,:];
+    vecYt   = vec(Y');
+
+    # create expmhf = exp.(-hfull), where hfull is (Tf×1) and hfull = [h_p; h; h_hf_nfcast]
+    hf = [zeros(p,);csv_h_struct.h; zeros(n_fcst_hf,)]
+    expmhf = exp.(-hf);
+
+
+    # prepare matrices for saving
     store_YY    = zeros(Tf,n,n_save);
-    store_β = zeros(k*n,n_save);
-    store_h = zeros(T,n_save);
+    store_β = zeros(n^2*p+n,n_save);
     store_Σt = zeros(n,n,n_save);
-    store_Σt_inv= zeros(n,n,n_save);
+    store_Σt_inv = zeros(n,n,n_save);
+    store_h = zeros(T,n_save);
     store_s2_h = zeros(T,n_save);
     store_ρ = zeros(n_save,);
     store_σ_h2 = zeros(n_save,); 
     store_eh = zeros(T,n_save);
+
+    for ii = 1:ndraws
     
+        # updating pbsi_struct with Σt_inv.
+        BEAVARs.update_Σ_inv_bb_csv!(pbsi_struct.Σf_inv_bb,csv_Σt_struct.Σt_inv,expmhf,Tf,n);
 
-    @showprogress for ii in 1:ndraws
+        # update pbsi_struct with β 
+        pbsi_struct.B_draw .= reshape(β_hat_bb_struct.β_draw,k,n)';
+        @views pbsi_struct.structB_draw[:,n+1:end] .= pbsi_struct.B_draw[:,const_loc+1:end];
 
-        Y, X = mlagL!(YY,Y,X,p,n);
-        A, cholΣU, Σ, s2_h, U, Ωinv = BEAVARs.Chan2020_drawA(Y,X,n,k,T,v_0,h,Ωinv,dg_ind_Ωinv,V_Ainv,S_0,VAinvDA0,AVAinvA);
-        h = BEAVARs.Chan2020_draw_h!(h,s2_h,ρ,σ_h2,n,H_ρ,T);
-        ρ, σ_h2, eh = BEAVARs.Chan2020_draw_ρ!(ρ,h,eh,v_h0,S_h0,ρ_0,V_ρ,T);
-        
-        
-        Σt_inv = inv(Σ) 
-        B_draw[:,:] = A';
-        b0[:] = B_draw[:,1];
-        structB_draw[:,n+1:end] = B_draw[:,2:end];
-        
-        cB,H_B,Σ_invsp  = BEAVARs.Blagov2027_updCPZ!(cB,H_B,Σ_invsp,B_draw,structB_draw,Σt_inv,Y0,cB_b0_LI,p,n,H_B_CI,strctBdraw_LI,Σt_LI);
-        Σ_invsp         = BEAVARs.Blagov2027_updCPZcsv!(Σ_invsp,p,n,Tf,Ωinv);
-        YYt             = BEAVARs.Blagov2027_draw_wz!(YYt,longyo,cB,Σ_invsp,Sm_bit,Smsp,Sosp,nm,MOiM,MOiz,Gm,Go,H_B,GΣ,Kym);
+        # Draw YYt using the precision based sampler, updating YYs, Y, vecYt
+        BEAVARs.pbsi_draw_wz!(YYt,longyo,Y0,pbsi_struct,p,n,Sm_bit,nm,nmdraws,Tf);
 
-        # update priors
-        (deltaP, sigmaP, mu_prior) = BEAVARs.updatePriors_bitVec!(Y,X,n,mu_prior,deltaP,sigmaP,intercept,updP_vec);
-        S_0                         = Diagonal(sigmaP);       
-        (idx_kappa1,idx_kappa2, Vβ_Minn) = prior_NatConj(n,p,sigmaP,hypSetup);
-        # A0 doesn't change, it is either zeros(n*p+1,n) or [ones(n,1); eye(n); zeros((n-1)*p,n)]
-        V_Ainv  = sparse(1:k,1:k,1.0./Vβ_Minn);
-        VAinvDA0 = V_Ainv\A_0;
-        AVAinvA = A_0'*V_Ainv*A_0;   # this will not change unless we update the prior
-    
+        # update X by mutation, exclude the forecast from the 
+        mlagL!(YYs,X,p,n);
+
+        # update β_hat_bb_struct for drawing the parameters
+        BEAVARs.update_Σ_inv_bb_csv!(β_hat_bb_struct.Σ_inv_bb,csv_Σt_struct.Σt_inv,csv_h_struct.expmh,T,n);   
+
+        # draw β
+        BEAVARs.Chan2020_draw_βsur_bb!(priorMinn_struct,β_hat_bb_struct,X,vecYt);
+
+        # draw Σt and calculate Σt_inv
+        BEAVARs.CCK2016_drawΣtsur!(vecYt,β_hat_bb_struct,csv_Σt_struct,csv_h_struct,n,T);
+
+        # draw h until T
+        BEAVARs.csv_draw_h_ρ!(csv_h_struct, n,T,hyp_struct); 
+        
+        # update full h beyond t=T and before t=1
+        BEAVARs.update_hf_expmhf!(hf,expmhf,csv_h_struct, Tf, T, p)
+
         if ii>n_burn
             store_YY[:,:,ii-n_burn]  = YY;
-            store_Σt_inv[:,:,ii-n_burn]    = Σt_inv;
-            # store_Σt[:,:,ii-n_burn] = Σt;
-            store_β[:,ii-n_burn] = vec(A);
-            store_h[:,ii-n_burn] = h;
-            store_Σt[:,:,ii-n_burn] = Σ;
-            store_s2_h[:,ii-n_burn] = s2_h;
-            store_ρ[ii-n_burn,] = ρ;
-            store_σ_h2[ii-n_burn,] = σ_h2;
-            store_eh[:,ii-n_burn] = eh;
+            store_β[:,ii-n_burn] = β_hat_bb_struct.β_draw;
+            store_Σt_inv[:,:,ii-n_burn] = csv_Σt_struct.Σt_inv;
+            store_Σt[:,:,ii-n_burn] = csv_Σt_struct.Σt;
+            store_h[:,ii-n_burn] = csv_h_struct.h;
+            store_s2_h[:,ii-n_burn] = csv_h_struct.s2_h;
+            store_ρ[ii-n_burn,] = csv_h_struct.ρ_vec[1];
+            store_σ_h2[ii-n_burn,] = csv_h_struct.σ_h2_vec[1];
+            store_eh[:,ii-n_burn] = csv_h_struct.eh;
         end
-    end
 
-    return store_β, store_Σt_inv, store_YY, M_zsp, z_vec, Sm_bit, freq_mix_tp, store_Σt, store_h, store_s2_h, store_ρ, store_σ_h2, store_eh, M_inter_agg, fdatesHF, fdatesLF
+    end
+    store_YY_LF = mapslices(x->M_inter_agg*x,store_YY,dims=1:2);
+    return store_YY, store_YY_LF, store_β, store_Σt, store_Σt_inv, store_h, store_s2_h, store_ρ, store_σ_h2,store_eh, M_zsp, z_vec, Sm_bit, freq_mix_tp, fdatesHF, fdatesLF, M_inter_agg
+
 end
 
 
@@ -179,9 +196,10 @@ end
 #------------------------------
 # Output structure
 @with_kw struct VAROutput_Blagov2027 <: BVARmodelOutput
+    store_YY::Array{}
+    store_YY_LF::Array{}
     store_β::Array{}        # 
     store_Σt_inv::Array{}        # 
-    store_YY::Array{}
     M_zsp::Array{} 
     z_vec::Array{} 
     Sm_bit::Array{}
@@ -409,3 +427,19 @@ function forecast(VAROutput::VAROutput_Blagov2027,VARSetup::BVARmodelSetup,data_
     return fcast_struct
 
 end # end function fcastCPZ2023()
+
+
+
+function update_hf_expmhf!(hf,expmhf,csv_h_struct,Tf, T, p)
+    hf[p+1:T+p,:] = csv_h_struct.h;
+    sqrt_σ_h2 = sqrt(csv_h_struct.σ_h2_vec[1]);
+    # extend h backwards for Y0 using the csv regression
+    for io = p:-1:1 
+        hf[io] = (hf[io+1] - sqrt_σ_h2*randn())/csv_h_struct.ρ_vec[1]
+    end
+    #extend them forward as well
+    for io = T+p+1:Tf
+        hf[io] = hf[io-1]*csv_h_struct.ρ_vec[1] + sqrt_σ_h2*randn()
+    end
+    expmhf .= exp.(-hf);
+end

@@ -90,10 +90,8 @@ function init_Minn_csv(YY,set_struct,hyp_struct)
     sigmaP_ar4, betaOLS_ar4     = ar4(YY);                                  # do OLS to initialize priors as in CCK2016
     k                           = n*p+intercept
     h                           = zeros(T,);                                # stochastic volatilities
-    expmh                       = exp.(-h);
     S_0                         = diagm(sigmaP_ar4);                            # initialize S_0
     Σt_inv                      = S_0\I;                                    # initialize Σ^-1   
-    # Σ_inv_sp, Σt_LI              = BEAVARs.makeBlkDiag(T*n,n,0,Σt_inv);      # I(T) ⊗ Σ-1 and its indices for update
     Σ_inv_bb                    = BlockBandedMatrix{Float64}(undef,ones(Int,T,).*n, ones(Int,T,).*n, (0, 0))
     XtΣ_inv_den                 = zeros(k*n,T*n);                           # will be X' ( I(T) ⊗ Σ-1 )   from page 6 in Chan 2020 LBA
     XtΣ_inv_X                   = zeros(n*k,n*k);                           # will be X' ( I(T) ⊗ Σ-1 ) X from page 6 in Chan 2020 LBA    
@@ -102,13 +100,13 @@ function init_Minn_csv(YY,set_struct,hyp_struct)
     
     priorMinn_struct = BEAVARs.init_priorMinn(n,p,sigmaP_ar4,set_struct.prior_RW,hyp_struct)
 
-    β_hat_struct = BEAVARs.make_βdraw_bb_struct(similar(priorMinn_struct.Vinvβ_prior),similar(priorMinn_struct.Vinvβ_prior),similar(priorMinn_struct.Vinvβ_prior), Xsur, XtΣ_inv_den, XtΣ_inv_X, Σ_inv_bb, K_β)
+    β_hat_struct = BEAVARs.make_βdraw_bb_struct(zeros(k*n,),zeros(k*n,),zeros(k*n,), Xsur, XtΣ_inv_den, XtΣ_inv_X, Σ_inv_bb, K_β)
 
     Uvec = similar(vec(Y'))
     Σt   = similar(S_0)
-    csv_Σt_struct = BEAVARs.make_csv_Σt_struct(Uvec,Σt,Σt_inv,S_0,hyp_struct.nu0,hyp_struct.nu0+T+n)
+    csv_Σt_struct = BEAVARs.make_csv_Σt_struct(Uvec,Σt,Σt_inv,S_0,hyp_struct.nu0,hyp_struct.nu0+T+n,cholesky(S_0).U)
 
-    csv_h_struct = init_csv_struct(h,hyp_struct,T)
+    csv_h_struct = init_csv_struct(h,hyp_struct,T,T+p)
     return Y, X, T, n, sigmaP_ar4, betaOLS_ar4, priorMinn_struct, β_hat_struct, csv_Σt_struct, csv_h_struct
 end
 
@@ -119,29 +117,26 @@ end
     Draw Σt matrix and calculates its inverse using an Inverse Wishart distribution.
 """
 function CCK2016_drawΣtsur!(vecYt,β_hat_struct,csv_Σt_struct,csv_h_struct,n,T)
-    @unpack Uvec, Σt, Σt_inv, S_0, nu0 = csv_Σt_struct
+    @unpack Uvec, Σt, Σt_inv, S_0, nu0, cholΣt_U = csv_Σt_struct
     @unpack s2_h = csv_h_struct
     Uvec .= vecYt .- mul!(Uvec,β_hat_struct.Xsur,β_hat_struct.β_draw) 
     U = reshape(Uvec,n,T);   
     BEAVARs.fast_triple_product!(Σt, U, csv_h_struct.expmh);                   # store U*Diagonal(exp.(-h)*U' + S_0 in Σt
     Σt .= rand(InverseWishart(csv_Σt_struct.iw_df, Σt .+ csv_Σt_struct.S_0));    # draw for Σ
     Σt_inv .= Σt\I;
-    s2_h .= sum((U'/cholesky(Σt).U).^2,dims=2);
+    cholΣt_U .= cholesky(Σt).U;
+    s2_h .= sum((U'/cholΣt_U).^2,dims=2);
 end
 
 
 @doc raw"""
 
-    BEAVARs.update_Σ_inv_bb!(Σ_inv_bb,Σt_inv)
+    BEAVARs.update_Σ_inv_bb_csv!(Σ_inv_bb,Σt_inv,expmh,T,n)
 
-    Updates the block-banded matrix Σ_inv_bb with the Σt_inv across the block diagonal
+    Updates the block-banded matrix Σ_inv_bb with Σt_inv end exp.(-h) across the block diagonal
 
 """
-function update_Σ_inv_bb!(β_hat_bb_struct,csv_Σt_struct,csv_h_struct,T,n)
-    @unpack Σ_inv_bb = β_hat_bb_struct
-    @unpack Σt_inv = csv_Σt_struct
-    @unpack expmh = csv_h_struct
-    # block_data = Σ_inv_bb.data
+function update_Σ_inv_bb_csv!(Σ_inv_bb,Σt_inv,expmh,T,n)
     diagonal_block = vec(Σt_inv)
     for ii in 1:T
         copyto!(Σ_inv_bb.data, (ii - 1)*n*n + 1, diagonal_block.*expmh[ii], 1, n*n)
@@ -163,8 +158,8 @@ end
 
 
 struct make_csv_h_struct{T <: AbstractFloat}
-    h::Array{T,1}
-    expmh::Array{T,1}
+    h::Array{T,1}                   # h for T
+    expmh::Array{T,1}               # exp.(-h) for T
     ht::Array{T,1}
     eht::Array{T,1}
     new_ht::Array{T,1}
@@ -177,6 +172,7 @@ struct make_csv_h_struct{T <: AbstractFloat}
     ρ_vec::Array{T,1}
     σ_h2_vec::Array{T,1}
     K_h::SparseMatrixCSC{T,Int}
+    expmhf::Array{T,1}                  # exp.(-h) for T+p = Tf, used for the presicion based sampler, where we need the initial conditions
 end
 
 
@@ -187,17 +183,19 @@ struct make_csv_Σt_struct{T <: AbstractFloat}
     S_0::Array{T,2}
     nu0::Int
     iw_df::Int             # degrees of freedom for the inverse Wishart
+    cholΣt_U::UpperTriangular{T, Matrix{T}};
 end
 
-function init_csv_struct(h,hyp_struct,T)
+function init_csv_struct(h,hyp_struct,T,Tf)
     @unpack ρ, σ_h2, v_h0, S_h0, ρ_0, V_ρ = hyp_struct
-    ρ_vec = zeros(1,); σ_h2_vec = zeros(1,);
-    ρ_vec[1]=ρ;
+    expmhf      = [repeat([exp.(-h[1])],Tf-T); exp.(-h)];  # currently we just copy the first one. drawing the initial conditions would be better for correctness
+    ρ_vec       = zeros(1,); σ_h2_vec = zeros(1,);
+    ρ_vec[1]    = ρ;
     σ_h2_vec[1] = σ_h2;
-    H_ρ = sparse(Matrix(1.0I, T, T)) - sparse(ρ*diagm(-1=>repeat(1:1,T-1)));
-    H_inv = H_ρ'*(Diagonal([(1.0-ρ^2)/σ_h2; 1.0/σ_h2*ones(T-1,)]))*H_ρ;
-    K_h = similar(H_inv);
-    csv_h_struct = BEAVARs.make_csv_h_struct(h,exp.(-h),similar(h),similar(h),similar(h),similar(h),similar(h),similar(h),similar(h),similar(h),H_ρ,ρ_vec,σ_h2_vec,K_h)
+    H_ρ         = sparse(Matrix(1.0I, T, T)) - sparse(ρ*diagm(-1=>repeat(1:1,T-1)));
+    H_inv       = H_ρ'*(Diagonal([(1.0-ρ^2)/σ_h2; 1.0/σ_h2*ones(T-1,)]))*H_ρ;
+    K_h         = similar(H_inv);
+    csv_h_struct = BEAVARs.make_csv_h_struct(h,exp.(-h),similar(h),similar(h),similar(h),similar(h),similar(h),similar(h),similar(h),similar(h),H_ρ,ρ_vec,σ_h2_vec,K_h,expmhf)
     return csv_h_struct
 end
 
@@ -308,6 +306,67 @@ end
 
 
 
+function csv_draw_h_fc!(csv_h_struct, n,T,hyp_struct)
+    @unpack v_h0, S_h0, ρ_0, V_ρ = hyp_struct
+    @unpack h, expmh, ht, eht, new_ht, sieht, G_h, f_h, s2_h, eh, H_ρ, ρ_vec,σ_h2_vec, K_h = csv_h_struct
+    accept = false;
+    ρ = ρ_vec[1]; 
+    σ_h2 = σ_h2_vec[1];
+    # H_ρ[diagind(H_ρ,-1)]=fill(-ρ,T-1);
+    H_ρ.nzval[2:2:end].=-ρ;
+    H_inv = H_ρ'*(Diagonal([(1.0-ρ^2)/σ_h2; 1.0/σ_h2*ones(T-1,)]))*H_ρ;
+    ϵ_h = 1.0;
+    ht .= h; 
+    
+    while ϵ_h > 10^(-3)
+        eht .= exp.(ht)
+        sieht .= s2_h[:,]./eht
+        G_h .= 0.5*sieht
+        f_h .= -n*0.5 .+ G_h;
+        K_h .= H_inv .+ Diagonal(G_h);
+        new_ht .= K_h\(f_h + G_h.*ht)
+        ϵ_h = maximum(abs.(new_ht-ht))
+        ht[:,] = new_ht[:,]
+    end
+
+    C_K_h = cholesky(K_h)
+    
+    hstar = similar(ht)
+    hstar .= ht
+    logc = -0.5*hstar'*H_inv*hstar - 0.5*n*sum(hstar) .- 0.5*exp.(-hstar)'*s2_h[:,] .+ log(3)
+    
+    flag = false
+    hc = similar(h)
+    alpARc = 0.0;
+    while flag == 0
+        hc = ht + C_K_h.U\randn(T,);        
+        alpARc = -0.5*hc'*H_inv*hc .- (0.5*n)*sum(hc,dims=1)[1] .- 0.5*exp.(-hc)'*s2_h[:,] .+ 0.5*(hc-ht)'*K_h*(hc-ht) .- logc;
+        
+        if alpARc > log(rand())
+            flag = true;
+        end
+    end        
+    alpAR = -0.5*h'*H_inv*h .- (0.5*n)*sum(h) .- 0.5*exp.(-h)'*s2_h[:,] .+ 0.5*(h-ht)'*K_h*(h-ht) .- logc;
+    if alpAR < 0
+        alpMH = 1.0;
+    elseif alpARc < 0
+        alpMH = - alpAR;
+    else
+        alpMH = alpARc - alpAR;
+    end    
+    if alpMH > log(rand())
+        h[:,] = hc[:,]; 
+        accept = true;
+    end
+
+    # update exp.(-h)
+    expmh .= exp.(-h);
+
+end 
+
+
+
+
 function CCK2016csv(YY::Array{Float64},set_struct::BVARmodelSetup,hyp_struct::BVARmodelHypSetup)
     # @unpack ρ, σ_h2, v_h0, S_h0, ρ_0, V_ρ = hyp_struct
     @unpack p, n_save, n_burn, prior_RW = set_struct
@@ -328,7 +387,7 @@ function CCK2016csv(YY::Array{Float64},set_struct::BVARmodelSetup,hyp_struct::BV
     store_eh = zeros(T,n_save);
     
     for ii = 1:n_draws 
-        BEAVARs.update_Σ_inv_bb!(β_hat_bb_struct,csv_Σt_struct,csv_h_struct,T,n);
+        BEAVARs.update_Σ_inv_bb_csv!(β_hat_bb_struct.Σ_inv_bb,csv_Σt_struct.Σt_inv,csv_h_struct.expmh,T,n);
         BEAVARs.Chan2020_draw_βsur_bb!(priorMinn_struct,β_hat_bb_struct,X,vecYt);
         BEAVARs.CCK2016_drawΣtsur!(vecYt,β_hat_bb_struct,csv_Σt_struct,csv_h_struct,n,T);
         BEAVARs.csv_draw_h_ρ!(csv_h_struct, n,T,hyp_struct); 
