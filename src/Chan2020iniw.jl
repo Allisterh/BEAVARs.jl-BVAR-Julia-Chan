@@ -6,7 +6,14 @@
 #-------------------------------------
 # The Den of the beavar
 #-------------------------------------
+@doc raw"""
+    beavar(::Chan2020iniw_type, set_struct, hyp_str, data_struct)
 
+    Estimates a BVAR with common stochastic volatility as proposed by Carriero, Clark, and Marcellino (2016). 
+
+    The implementation of csv follows Chan (2020) and draws `h`, the stochastic volatility, using a Newton Rapson method and not the CCK article with Shephard and Chib's 1998 method.
+
+"""
 function beavar(::Chan2020iniw_type, set_struct, hyp_str, data_struct)
     println("Hello Independent Normal Inverse Wishart")
     @unpack data_tab, data_mat, var_list = data_struct;
@@ -46,7 +53,7 @@ end
 
 
 """
-    Chan2020iniw(YY,VARSetup::BVARmodelSetup,hyp_struct::BVARmodelHypSetup)
+    Chan2020iniw_dep(YY,VARSetup::BVARmodelSetup,hyp_struct::BVARmodelHypSetup)
 
     Implements BVAR with Independent Normal Inverse Wishart (iniw) prior following Chan (2020)
 
@@ -81,6 +88,12 @@ function Chan2020iniw_dep(YY,VARSetup::BVARmodelSetup,hyp_struct::BVARmodelHypSe
 end
 
 
+"""
+    Chan2020iniw(YY,set_struct::BVARmodelSetup,hyp_struct::BVARmodelHypSetup)
+
+    Implements BVAR with Independent Normal Inverse Wishart (iniw) prior following Chan (2020)
+
+"""
 function Chan2020iniw(YY,set_struct::BVARmodelSetup,hyp_struct::BVARmodelHypSetup)
     @unpack p,n_burn,n_save, prior_RW = set_struct
     n_draws  = n_save+n_burn;
