@@ -13,6 +13,7 @@ struct BVARpriorMinn{T <: AbstractFloat}
     idx_kappa1::Array{Int,1} # indices of parameters associated with own lag
     idx_kappa2::Array{Int,1} # indices of parameters associated with other variables and their lags
     idx_kappa3::Array{Int,1} # indices of parameters associated with the constant term
+    Ψ_vec::Array{T,1}
 end
 
 
@@ -449,7 +450,8 @@ end
 function init_priorMinn(n,p,sigmaP_vec,data_trans,hyp_struct)
     Cβ_vec = zeros(n^2*p+n,);       
     Vβ_vec = zeros(n^2*p+n,);                       # C diag but without the hyperparameters
-    βMinn = zeros(n^2*p+n);                         # initialize the prior mean for growth rates, e.g. center at 0
+    Ψ_vec  = ones(n^2*p+n);                         # For global local priors (not yet implemented)
+    β_prior = zeros(n^2*p+n);                       # initialize the prior mean for growth rates, e.g. center at 0
     np1 = n*p+1                                     # number of parameters per equation
     idx_kappa1 =  Vector{Int}()
     idx_kappa2 =  Vector{Int}()
@@ -469,28 +471,28 @@ function init_priorMinn(n,p,sigmaP_vec,data_trans,hyp_struct)
             push!(idx_kappa3,idx_count)
         elseif idx == ii            # These are the own lags of the variable
             if l == 1 && data_trans == 1              # If we have levels instead of growth rates we add a "1" for the first lag
-                βMinn[idx_count,] = 1;
+                β_prior[idx_count,] = 1.0;
             end
-            Vi[j] = 1/l^2;
+            Vi[j] = 1.0/l^2;
             push!(idx_kappa1,idx_count)
         else
-            Vi[j] = sigmaP_vec[ii]/(l^2*sigmaP_vec[idx]);
+            Vi[j] = sigmaP_vec[ii]/(sigmaP_vec[idx]*(l^2));
             push!(idx_kappa2,idx_count)
         end
         idx_count += 1
     end
 
     Cβ_vec[(ii-1)*np1+1:ii*np1] = Vi
-
     end
+    
     
     Vβ_vec[idx_kappa1] .= Cβ_vec[idx_kappa1] .* hyp_struct.c1;  # own lags
     Vβ_vec[idx_kappa2] .= Cβ_vec[idx_kappa2] .* hyp_struct.c2;  # other lags
     Vβ_vec[idx_kappa3] .= Cβ_vec[idx_kappa3] .* hyp_struct.c3;  # constant
     Vβ_inv = diagm(1.0./Vβ_vec);
     Vβ_inv_vecView = @view(Vβ_inv[diagind(Vβ_inv)]);
-    Vinvβ_prior = Vβ_inv*βMinn;
-    priorMinn_struct = BVARpriorMinn(βMinn, Cβ_vec, Vβ_vec, Vβ_inv, Vβ_inv_vecView, Vinvβ_prior, idx_kappa1, idx_kappa2, idx_kappa3)
+    Vinvβ_prior = Vβ_inv*β_prior;
+    priorMinn_struct = BVARpriorMinn(β_prior, Cβ_vec, Vβ_vec, Vβ_inv, Vβ_inv_vecView, Vinvβ_prior, idx_kappa1, idx_kappa2, idx_kappa3, Ψ_vec)
 
     return priorMinn_struct
 
@@ -502,21 +504,26 @@ end
     Updates the variance-covariance matrix of the Minnesota prior coefficients with new hyperparameters.
     The function is easy on the eyes but slower than a hot-loop, therefore not used
 
-    See
+    
 """
 function update_priorMinn_broadcast!(prior_struct::BVARpriorMinn,hyp_struct::BEAVARs.BVARmodelHypSetup)
     # hot loops are faster than broadcasting
     @views prior_struct.Vβ_vec[prior_struct.idx_kappa1] .= prior_struct.Cβ_vec[prior_struct.idx_kappa1] .* hyp_struct.c1;  # own lags
     @views prior_struct.Vβ_vec[prior_struct.idx_kappa2] .= prior_struct.Cβ_vec[prior_struct.idx_kappa2] .* hyp_struct.c2;  # other lags
     @views prior_struct.Vβ_vec[prior_struct.idx_kappa3] .= prior_struct.Cβ_vec[prior_struct.idx_kappa3] .* hyp_struct.c3;  # constants
+    
+    prior_struct.Vβ_inv_vecView .= 1.0./prior_struct.Vβ_vec;
+    mul!(prior_struct.Vinvβ_prior,prior_struct.Vβ_inv,prior_struct.β_prior)
 end
 
 
 """
     update_priorMinn!(prior_struct,hyp_struct)
+
+    This is a hot loop version of update_priorMinn_broadcast!()
 """
 function update_priorMinn!(prior_struct::BEAVARs.BVARpriorMinn,hyp_struct::BEAVARs.BVARmodelHypSetup)
-    @unpack Cβ_vec, Vβ_vec, idx_kappa1, idx_kappa2, idx_kappa3 = prior_struct    
+    @unpack Cβ_vec, Vβ_vec, idx_kappa1, idx_kappa2, idx_kappa3, Vβ_inv_vecView, Vβ_inv,Vinvβ_prior,β_prior= prior_struct    
     for ii in eachindex(idx_kappa1)
         Vβ_vec[idx_kappa1[ii]] = Cβ_vec[idx_kappa1[ii]] * hyp_struct.c1
     end
@@ -526,6 +533,8 @@ function update_priorMinn!(prior_struct::BEAVARs.BVARpriorMinn,hyp_struct::BEAVA
     for ii in eachindex(idx_kappa3)
         Vβ_vec[idx_kappa3[ii]] = Cβ_vec[idx_kappa3[ii]] * hyp_struct.c3
     end
+    Vβ_inv_vecView .= 1.0./Vβ_vec;
+    mul!(Vinvβ_prior,Vβ_inv,β_prior)
 end
 
 
@@ -566,21 +575,47 @@ function Chan2020_draw_βsur!(prior_struct,β_hat_struct,X,vecYt)
 end
 
 
+"""
+    function Chan2020_draw_βsur_bb!(prior_struct,β_hat_struct,X,vecYt)
 
+        Draws β using the SUR method. The drawback is that this function mutates Vinvβ_prior in an unexpected way, so should be depreciated
+"""
 function Chan2020_draw_βsur_bb!(prior_struct,β_hat_struct,X,vecYt)
     @unpack Xsur, XtΣ_inv_den, XtΣ_inv_X, Σ_inv_bb, K_β, β_hat, β_draw, β_rand  = β_hat_struct;
     @unpack Vβ_vec, Vβ_inv, Vβ_inv_vecView, β_prior,Vinvβ_prior = prior_struct;
-    Vβ_inv_vecView[:] .= 1.0./Vβ_vec;                   # update the diagonal of Vβ_inv
-    update_Xsur!(Xsur, X);                              # update Xs                   
+    Vβ_inv_vecView[:] .= 1.0./Vβ_vec;                   # update the diagonal of Vβ_inv 
     mul!(Vinvβ_prior, Vβ_inv, β_prior)                  #  update V^-1 * β_Minn 
+    update_Xsur!(Xsur, X);                              # update Xs                  
 
     mul!(XtΣ_inv_den,Xsur',Σ_inv_bb);                   #  X'*( I(T) ⊗ Σ^{-1} )
     mul!(XtΣ_inv_X,XtΣ_inv_den,Xsur);
     K_β .= Vβ_inv .+ XtΣ_inv_X;                         #  K_β = V^{-1} + X'*( I(T) ⊗ Σ-1 )*X
-    mul!(Vinvβ_prior,XtΣ_inv_den, vecYt,1.0,1.0);     # (V^-1_Minn * beta_Minn) + X' ( I(T) ⊗ Σ-1 ) y
+    mul!(Vinvβ_prior,XtΣ_inv_den, vecYt,1.0,1.0);       # (V^-1_Minn * beta_Minn) + XtΣ_inv_den* y
 
     cholK_β = cholesky!(Hermitian(K_β));                # Cholesky factor
     β_hat[:] = ldiv!(cholK_β.U,ldiv!(cholK_β.U',Vinvβ_prior));    # C'\(C*(V^-1_Minn * beta_Minn + X' ( I(T) ⊗ Σ-1 ) y)
+    randn!(β_rand)
+    β_draw[:] .= β_hat .+ ldiv!(cholK_β.U,β_rand); # draw for β
+end
+
+"""
+    function Chan2020_draw_βsur_bb_NoPrUpd!(prior_struct,β_hat_struct,X,vecYt)
+
+        Draws β using the SUR method. Does not update the minnesota prior in the function, should be updated outside if needed.
+"""
+function Chan2020_draw_βsur_bb_NoPrUpd!(prior_struct,β_hat_struct,X,vecYt)
+    @unpack Xsur, XtΣ_inv_den, XtΣ_inv_X, Σ_inv_bb, K_β, β_hat, β_draw, β_rand  = β_hat_struct;
+    @unpack Vβ_inv, Vinvβ_prior = prior_struct;
+    update_Xsur!(Xsur, X);                              # update Xs                  
+
+    mul!(XtΣ_inv_den,Xsur',Σ_inv_bb);                   #  X'*( I(T) ⊗ Σ^{-1} )
+    mul!(XtΣ_inv_X,XtΣ_inv_den,Xsur);
+    K_β .= Vβ_inv .+ XtΣ_inv_X;                         #  K_β = V^{-1} + X'*( I(T) ⊗ Σ-1 )*X
+    mul!(β_hat,XtΣ_inv_den,vecYt)                       # using β_hat as temporary storage for XtΣ_inv_den*y
+    β_hat .= Vinvβ_prior .+  β_hat;                     # (V^-1_Minn * beta_Minn) + XtΣ_inv_den* y
+
+    cholK_β = cholesky!(Hermitian(K_β));                # Cholesky factor
+    β_hat[:] = ldiv!(cholK_β.U,ldiv!(cholK_β.U',β_hat));    # C'\(C*(V^-1_Minn * beta_Minn + X' ( I(T) ⊗ Σ-1 ) y)
     randn!(β_rand)
     β_draw[:] .= β_hat .+ ldiv!(cholK_β.U,β_rand); # draw for β
 end

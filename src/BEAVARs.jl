@@ -264,6 +264,7 @@ end
 
 include("dataPrep.jl")
 include("init_functions.jl")
+include("gigrnd.jl")
 include("BGR2010.jl")
 include("irfs.jl")
 include("Chan2020base.jl")

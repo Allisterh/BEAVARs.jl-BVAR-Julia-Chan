@@ -83,6 +83,7 @@ function CPZ2023iniw(dataHF_tab::TimeArray{Typ,N,D,A},dataLF_tab::TimeArray{Typ,
 
     # initialize the priors, drop any forecast to not use it for setting priors
     ~, X, T, ~, sigmaP_ar4, betaOLS_ar4, priorMinn_struct, β_hat_bb_struct, csv_Σt_struct, csv_h_struct = BEAVARs.init_Minn_csv(YY[1:end-HF_n_fcst,:],set_struct,hyp_struct);
+    update_priorMinn!(priorMinn_struct,hyp_struct)
 
     # make a view to the actual dependent variables. These will be updated as we update YYt
     YYs     = @view YY[1:end-HF_n_fcst,:];              # drop the forecast to not use it for priors or parameter estimation

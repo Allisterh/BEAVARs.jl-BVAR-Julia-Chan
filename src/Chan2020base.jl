@@ -12,21 +12,26 @@ Populate a hyperparamater structure for models based on Chan (2020) priors
         c1: hyperparameter on own lags 
         c2: hyperparameter on other lags
         c3: hyperparameter on the constant
-        ρ:  ar(1) parameter for the stochastic volatility (Chan2020csv only)
-        σ_h2: variance of the log-volatility (Chan2020csv only)
+        ρ:  ar(1) parameter for the stochastic volatility (for csv models only)
+        σ_h2: variance of the log-volatility (for csv models only)
 """
 @with_kw struct hypChan2020 <: BVARmodelHypSetup
-    c1::Float64     = 0.04; # hyperparameter on own lags
-    c2::Float64     = 0.01; # hyperparameter on other lags
-    c3::Float64     = 100.0;  # hyperparameter on the constant
+    c1::Float64     = 0.04;         # hyperparameter on own lags
+    c2::Float64     = 0.01;         # hyperparameter on other lags
+    c3::Float64     = 100.0;        # hyperparameter on the constant
     ρ::Float64      = 0.8;
     σ_h2::Float64   = 0.1;
-    v_h0::Float64    = 5.0; 
-    S_h0::Float64    = 0.01*(v_h0-1.0); 
-    ρ_0::Float64     = 0.9; # prior for ρ_0, the t=0 value of the autoregressive coefficient
-    V_ρ::Float64     = 0.04;
-    q::Float64       = 0.5;
-    nu0::Int         = 3;   # degrees of freedom to add for the inverse wishart distribution of the variance-covariance matrices
+    v_h0::Float64   = 5.0; 
+    S_h0::Float64   = 0.01*(v_h0-1.0); 
+    ρ_0::Float64    = 0.9;         # prior for ρ_0, the t=0 value of the autoregressive coefficient
+    V_ρ::Float64    = 0.04;
+    q::Float64      = 0.5;
+    nu0::Int        = 3;           # degrees of freedom to add for the inverse wishart distribution of the variance-covariance matrices
+    c_11::Float64   = 1.0;         # hyper-hyperparameter for c1 ∼ Gamma(c_11,c_12), lower bound 
+    c_21::Float64   = 25.0;        # hyper-hyperparameter for c1 ∼ Gamma(c_11,c_12), upper bound, 1.0/ 0.04 
+    c_12::Float64   = 1.0;         # hyper-hyperparameter for c1 ∼ Gamma(c_21,c_22), lower bound
+    c_22::Float64   = 625.0;       # hyper-hyperparameter for c1 ∼ Gamma(c_21,c_22), upper bound, 1.0/(0.04^2)
+    ν_ψ::Float64    = 0.5;         # for global-local priors ν_ψ ∼ Gamma(d1,d2) and ψ_ij ∼ Gamma(ν_ψ, ν_ψ/2)
 end
 
 
