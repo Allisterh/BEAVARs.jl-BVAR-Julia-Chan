@@ -5,7 +5,7 @@
 
 **BEAVARs.jl: Bayesian Econometric Analysis using Vector Autoregressive models**
 
-This is a personal package implementing various Bayesian VARs for economic analysis and forecasting. 
+This is a personal package implementing various Bayesian VARs for economic analysis and forecasting. It is in a very early stage and not ready for use.
 
 
 
@@ -21,9 +21,6 @@ VAR models with a single frequency:
 
  - [Chan2020csv](@ref): BVAR with natural conjugate and common stochastic volatility (csv) as in Chan, J.C.C. (2020), Large Bayesian Vecotrautoregressions, P. Fuleky (Eds), _Macroeconomic Forecasting in the Era of Big Data_, 95-125, Springer, Cham, [https://doi.org/10.1007/978-3-030-31150-6](https://doi.org/10.1007/978-3-030-31150-6), see also [joshuachan.org](https://joshuachan.org) and his [pdf](https://joshuachan.org/papers/large_BVAR.pdf).
 
- 
-
-
 
  - [BGR2010](@ref): BVAR with dummy observations as in Banbura, M., Giannone, D., and Reichlin, L. (2010), Large Bayesian vecotr auto regressions, _Journal of Applied Econometrics_, Vol 25(1), [doi.org/10.1002/jae.1137](https://doi.org/10.1002/jae.1137).
 
@@ -34,17 +31,16 @@ Mixed frequency VARs:
 
 Each model is implemented in a separate function, callable using the interface `beavar()`. See the documetnation for details. Note that notation follows the original reference. Consequently variable and parameter names are different across functions (e.g. $\lambda_1$ in one paper can be $c_1$ in another, even if they mean the same thing). 
 
-Some codes have been translated from Matlab, so there is a lot of room for optimization. 
 
 # First steps
-Consider going to the [General introduction](@ref) next
+Consider going to the [BEAVARs.jl Documentation](@ref) next
 ```@contents
 Pages = ["priors.md", "methods.md", "irfs.md"]
 Depth = 2
 ```
 
 #  Acknowledgmenets
-I would like to thank the following people, who are all **not associated** with this package, but have helped me a lot throughout my Julia journey, mostly through the [Julia discourse](https://discourse.julialang.org/). [Guillaume Dalle](https://github.com/gdalle). He **is not associated** with this package but went out of his way to help me get my first steps in Github and Julia optimization. [mikmoore](https://discourse.julialang.org/u/mikmoore/summary). [stevengj](https://discourse.julialang.org/u/stevengj/summary). This community is great.
+I would like to thank the following people, who are all **not associated** with this package, but have helped me a lot throughout my Julia journey, mostly through the [Julia discourse](https://discourse.julialang.org/). [Guillaume Dalle](https://github.com/gdalle) went out of his way to help me get my first steps in Github and Julia optimization. [mikmoore](https://discourse.julialang.org/u/mikmoore/summary) and [stevengj](https://discourse.julialang.org/u/stevengj/summary) who have helped me on the julia discourse I want to thank the community, which is really great.
 
 # Notes on the name
 - The name BEAVARs is an obvious play of words with a misspelled version of my favourite animal.

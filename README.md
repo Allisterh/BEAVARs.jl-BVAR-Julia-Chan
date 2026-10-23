@@ -1,4 +1,5 @@
 # BEAVARs.jl: Bayesian Econometric Analysis with VAR models
+[![docs latest](https://img.shields.io/badge/docs-latest-blue.svg)](https://borisblagov.github.io/BEAVARs.jl/dev/)
 
 ![Credit Mikelde Ferro: https://www.youtube.com/watch?v=WIYQWK4pkqg&ab_channel=MikedelFerro-Music](BeaverMunchingCabbage.png)
 Still taken from a video by [Mikel Ferro](https://www.youtube.com/watch?v=WIYQWK4pkqg&ab_channel=MikedelFerro-Music)
@@ -6,7 +7,7 @@ Still taken from a video by [Mikel Ferro](https://www.youtube.com/watch?v=WIYQWK
 
 **BEAVARs.jl: Bayesian Econometric Analysis using Vector Autoregressive models**
 
-This is a personal package implementing various Bayesian VARs for economic analysis and forecasting. 
+This is a personal package implementing various Bayesian VARs for economic analysis and forecasting. It is in a very early stage and not ready for use.
 
 # Available models
 
@@ -14,10 +15,11 @@ VAR models with a single frequency:
 
  - [Chan2020minn](@ref): BVAR with classical  Minnesota prior (homoscedastic fixed variance-covariance matrix) as in Chan, J.C.C. (2020), Large Bayesian Vecotrautoregressions, P. Fuleky (Eds), _Macroeconomic Forecasting in the Era of Big Data_, 95-125, Springer, Cham, [https://doi.org/10.1007/978-3-030-31150-6](https://doi.org/10.1007/978-3-030-31150-6), see also [joshuachan.org](https://joshuachan.org) and his [pdf](https://joshuachan.org/papers/large_BVAR.pdf).
 
- - [Chan2020iniw](@ref): BVAR with Minnesota prior and an independent normal inverse Wishart (iniw) prior on the variance-covariance matrix  as in Chan, J.C.C. (2020), Large Bayesian Vecotrautoregressions, P. Fuleky (Eds), _Macroeconomic Forecasting in the Era of Big Data_, 95-125, Springer, Cham, [https://doi.org/10.1007/978-3-030-31150-6](https://doi.org/10.1007/978-3-030-31150-6), see also [joshuachan.org](https://joshuachan.org) and his [pdf](https://joshuachan.org/papers/large_BVAR.pdf).
+ - [Chan2020iniw](@ref): BVAR with classical Minnesota prior and an independent normal inverse Wishart (iniw) prior on the variance-covariance matrix  as in Chan, J.C.C. (2020), Large Bayesian Vecotrautoregressions, P. Fuleky (Eds), _Macroeconomic Forecasting in the Era of Big Data_, 95-125, Springer, Cham, [https://doi.org/10.1007/978-3-030-31150-6](https://doi.org/10.1007/978-3-030-31150-6), see also [joshuachan.org](https://joshuachan.org) and his [pdf](https://joshuachan.org/papers/large_BVAR.pdf).
 
- - [Chan2020csv](@ref): BVAR with Minnesota prior and common stochastic volatility (csv) as in Chan, J.C.C. (2020), Large Bayesian Vecotrautoregressions, P. Fuleky (Eds), _Macroeconomic Forecasting in the Era of Big Data_, 95-125, Springer, Cham, [https://doi.org/10.1007/978-3-030-31150-6](https://doi.org/10.1007/978-3-030-31150-6), see also [joshuachan.org](https://joshuachan.org) and his [pdf](https://joshuachan.org/papers/large_BVAR.pdf).
+ - [CCK2016csv](@ref) BVAR with Minnesota prior and common-stochastic volatility (csv), with the csv as in Carriero, Andrea, Todd E. Clark, and Massimiliano Marcellino. 2016. Common Drifting Volatility in Large Bayesian VARs. _Journal of Business & Economic Statistics_ 34 (3): 375–90. https://doi.org/10.1080/07350015.2015.1040116.
 
+ - [Chan2020csv](@ref): BVAR with natural conjugate and common stochastic volatility (csv) as in Chan, J.C.C. (2020), Large Bayesian Vecotrautoregressions, P. Fuleky (Eds), _Macroeconomic Forecasting in the Era of Big Data_, 95-125, Springer, Cham, [https://doi.org/10.1007/978-3-030-31150-6](https://doi.org/10.1007/978-3-030-31150-6), see also [joshuachan.org](https://joshuachan.org) and his [pdf](https://joshuachan.org/papers/large_BVAR.pdf).
 
 
  - [BGR2010](@ref): BVAR with dummy observations as in Banbura, M., Giannone, D., and Reichlin, L. (2010), Large Bayesian vecotr auto regressions, _Journal of Applied Econometrics_, Vol 25(1), [doi.org/10.1002/jae.1137](https://doi.org/10.1002/jae.1137).
@@ -29,17 +31,16 @@ Mixed frequency VARs:
 
 Each model is implemented in a separate function, callable using the interface `beavar()`. See the documetnation for details. Note that notation follows the original reference. Consequently variable and parameter names are different across functions (e.g. $\lambda_1$ in one paper can be $c_1$ in another, even if they mean the same thing). 
 
-Some codes have been translated from Matlab, so there is a lot of room for optimization. 
 
 
 # First steps
-Consider going to the [package documentation](https://borisblagov.github.io/BEAVARs.jl/dev/introduction/#General-introduction) next.
+Consider going to the [package documentation](https://borisblagov.github.io/BEAVARs.jl/dev) next.
+
 
 
 
 #  Acknowledgmenets
-I would like to thank [Guillaume Dalle](https://github.com/gdalle). He **is not associated** with this package but went out of his way to help me get my first steps in Github and Julia optimization. Also, many users in the [Julia discourse](https://discourse.julialang.org/) helped me often when I was struggling. This community is great.
-
+I would like to thank the following people, who are all **not associated** with this package, but have helped me a lot throughout my Julia journey, mostly through the [Julia discourse](https://discourse.julialang.org/). [Guillaume Dalle](https://github.com/gdalle) went out of his way to help me get my first steps in Github and Julia optimization. [mikmoore](https://discourse.julialang.org/u/mikmoore/summary) and [stevengj](https://discourse.julialang.org/u/stevengj/summary) who have helped me on the julia discourse I want to thank the community, which is really great.
 
 
 # Notes on the name
@@ -50,11 +51,13 @@ I would like to thank [Guillaume Dalle](https://github.com/gdalle). He **is not 
 - The name does not conform to the widely accepted convention of naming Julia packages (capital letter followed by all lowercase) but it [doesn't break any rules either](https://pkgdocs.julialang.org/v1/creating-packages/#Package-naming-rules). It isn't the only package with more than one capita letter, e.g. FFT, CUDA, CSV etc. Yes, it's an acronym, which can always be misleading. CSV may mean for you comma-separated value, but in my world it stands for common stochastic volatility :). And I still have no idea what FFT stands for and never googled it to make a point. Nevertheless, there should be minial confusion, because it's misspelled on purpose - the name Beaver.jl remains open, and if someone wants to use that we can still distinguish the packages BEAVARs.jl and Beavers.jl easily. 
 
 
+
 # References
+
 Banbura, Marta, Giannone, Domenico and Reichlin, Lucrezia, (2010), Large Bayesian vector auto regressions, _Journal of Applied Econometrics_, 25, issue 1, p. 71-92. [https://doi.org/10.1002/jae.1137](https://doi.org/10.1002/jae.1137). 
 
 Chan, J.C.C. (2020), Large Bayesian Vecotrautoregressions, P. Fuleky (Eds), _Macroeconomic Forecasting in the Era of Big Data_, 95-125, Springer, Cham, [https://doi.org/10.1007/978-3-030-31150-6](https://doi.org/10.1007/978-3-030-31150-6)
 
 Chan, J.C.C., Poon, A, Zhu, D. (2023) High-dimensional conditionally Gaussian state space models with missing data, _Journal of Econometrics_, Volume 236, Issue 1, September 2023, 105468, [https://doi.org/10.1016/j.jeconom.2023.05.005](https://doi.org/10.1016/j.jeconom.2023.05.005)
 
-
+Carriero, Andrea, Todd E. Clark, and Massimiliano Marcellino. 2016. Common Drifting Volatility in Large Bayesian VARs. _Journal of Business & Economic Statistics_ 34 (3): 375–90. https://doi.org/10.1080/07350015.2015.1040116.
