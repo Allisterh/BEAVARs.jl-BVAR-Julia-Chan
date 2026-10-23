@@ -24,8 +24,8 @@ function beavar(::CCK2016csv_type, set_struct, hyp_str, data_struct)
     datesLF_fcast = collect(datesLF[end]+freqL_date:freqL_date:datesLF[end]+freqL_date*(set_struct.n_fcst));
     fdatesLF = [datesLF;datesLF_fcast];
     YY = values(data_struct.data_tab);
-    store_β,store_Σ,store_h,store_s2_h, store_ρ, store_σ_h2, store_eh = BEAVARs.CCK2016csv(YY,set_struct,hyp_str);
-    out_struct = VAROutput_CCK2016csv(store_β,store_Σ,store_h,store_s2_h, store_ρ, store_σ_h2, store_eh,YY)
+    store_β,store_Σ,store_h,store_s2_h, store_ρ, store_σ_h2, store_eh,store_c1, store_c2 = BEAVARs.CCK2016csv(YY,set_struct,hyp_str);
+    out_struct = VAROutput_CCK2016csv(store_β,store_Σ,store_h,store_s2_h, store_ρ, store_σ_h2, store_eh,store_c1,store_c2,YY)
     return out_struct
 end
 
@@ -71,6 +71,8 @@ struct VAROutput_CCK2016csv{T <: AbstractFloat} <: BVARmodelOutput
     store_ρ::Array{T,1}        # 
     store_σ_h2::Array{T,1}     # 
     store_eh::Array{T,2}       #
+    store_c1::Array{T,1}       #
+    store_c2::Array{T,1}       #
     YY::Array{T,2}             #
 end
 
@@ -369,9 +371,7 @@ end
 
 function CCK2016csv(YY::Array{Float64},set_struct::BVARmodelSetup,hyp_struct::BVARmodelHypSetup)
     # @unpack ρ, σ_h2, v_h0, S_h0, ρ_0, V_ρ = hyp_struct
-    @unpack p, n_save, n_burn, prior_RW = set_struct
-
-    @unpack p,n_burn,n_save, prior_RW = set_struct
+    @unpack p, n_save, n_burn, prior_RW, est_hyp = set_struct
     n_draws  = n_save+n_burn;
 
 
@@ -385,12 +385,20 @@ function CCK2016csv(YY::Array{Float64},set_struct::BVARmodelSetup,hyp_struct::BV
     store_ρ = zeros(n_save,);
     store_σ_h2 = zeros(n_save,); 
     store_eh = zeros(T,n_save);
+    store_c1 = zeros(n_save,);
+    store_c2 = zeros(n_save,);
     
     for ii = 1:n_draws 
         BEAVARs.update_Σ_inv_bb_csv!(β_hat_bb_struct.Σ_inv_bb,csv_Σt_struct.Σt_inv,csv_h_struct.expmh,T,n);
-        BEAVARs.Chan2020_draw_βsur_bb!(priorMinn_struct,β_hat_bb_struct,X,vecYt);
+        BEAVARs.Chan2020_draw_βsur_bb_NoPrUpd!(priorMinn_struct,β_hat_bb_struct,X,vecYt);
         BEAVARs.CCK2016_drawΣtsur!(vecYt,β_hat_bb_struct,csv_Σt_struct,csv_h_struct,n,T);
         BEAVARs.csv_draw_h_ρ!(csv_h_struct, n,T,hyp_struct); 
+
+        if est_hyp == true
+            κ1, κ2 = BEAVARs.update_hyp_llmopt!(priorMinn_struct,β_hat_bb_struct,hyp_struct,n,p)
+            hyp_struct = hypChan2020(c1=κ1,c2=κ2);
+            BEAVARs.update_priorMinn!(priorMinn_struct,hyp_struct);
+        end
 
         if ii>n_burn
             store_β[:,ii-n_burn] = β_hat_bb_struct.β_draw;
@@ -400,9 +408,11 @@ function CCK2016csv(YY::Array{Float64},set_struct::BVARmodelSetup,hyp_struct::BV
             store_ρ[ii-n_burn,] = csv_h_struct.ρ_vec[1];
             store_σ_h2[ii-n_burn,] = csv_h_struct.σ_h2_vec[1];
             store_eh[:,ii-n_burn] = csv_h_struct.eh;
+            store_c1[ii-n_burn,] = hyp_struct.c1;
+            store_c2[ii-n_burn,] = hyp_struct.c2;
         end
     end
-    return store_β, store_Σ, store_h, store_s2_h, store_ρ, store_σ_h2, store_eh
+    return store_β, store_Σ, store_h, store_s2_h, store_ρ, store_σ_h2, store_eh,store_c1, store_c2
 end 
 
 

@@ -65,8 +65,11 @@ The function implements the homoscedastic Minnesota prior with a SUR form as in 
 Chan, J.C.C. (2020), Large Bayesian Vecotrautoregressions, P. Fuleky (Eds), _Macroeconomic Forecasting in the Era of Big Data_, 95-125, Springer, Cham, https://doi.org/10.1007/978-3-030-31150-6 and https://joshuachan.org/papers/large_BVAR.pdf.
 """
 function Chan2020minn(YY::Array{Tp},set_struct::BVARmodelSetup,hyp_struct::BVARmodelHypSetup) where Tp <: AbstractFloat
-    @unpack p,n_burn,n_save,prior_RW = set_struct
-    
+    @unpack p,n_burn,n_save,prior_RW,est_hyp = set_struct
+    if est_hyp == true
+        println("Hyperparameter estimation was set to 'true' but this model does not support estimating the hyperparameters. Ignoring.")
+    end
+
     # the function below will be retired in the future
     Y, X, T, n, sigmaP, S_0, Σt_inv, Vβ_inv, Vβ_inv_vecView, Σ_invsp, Σt_LI, XtΣ_inv_den, XtΣ_inv_X, Xsur_den, Xsur_CI, X_CI, k, K_β, beta, intercept, betOLS = BEAVARs.init_Minn(YY,p);
 

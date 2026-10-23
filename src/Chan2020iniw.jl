@@ -96,7 +96,10 @@ end
 
 """
 function Chan2020iniw(YY,set_struct::BVARmodelSetup,hyp_struct::BVARmodelHypSetup)
-    @unpack p,n_burn,n_save, prior_RW = set_struct
+    @unpack p,n_burn,n_save, prior_RW, est_hyp = set_struct
+    if est_hyp == true
+        println("This model does not support estimating the hyperparameters")
+    end
     n_draws  = n_save+n_burn;
 
     # the function below will be retired in the future
@@ -122,7 +125,7 @@ function Chan2020iniw(YY,set_struct::BVARmodelSetup,hyp_struct::BVARmodelHypSetu
 
 
     for ii = 1:n_draws 
-        BEAVARs.Chan2020_draw_βsur!(priorMinn_struct,β_hat_struct,X,vecYt);
+        BEAVARs.Chan2020_draw_βsur!(priorMinn_struct,β_hat_struct,X,vecYt); # this should be updated to use _bb! function and drop the Σ_sp
         BEAVARs.Chan2020_drawΣtsur!(vecYt,β_hat_struct,iniw_Σt_struct,n,T);
         
         β_hat_struct.Σ_inv_sp.nzval[:] = iniw_Σt_struct.Σt_inv[Σt_LI];               # update ( I(T) ⊗ Σ^{-1} )

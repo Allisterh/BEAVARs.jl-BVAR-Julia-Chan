@@ -120,7 +120,7 @@ function CPZ2023iniw(dataHF_tab::TimeArray{Typ,N,D,A},dataLF_tab::TimeArray{Typ,
         BEAVARs.update_Σf_inv_bb!(β_hat_bb_struct.Σ_inv_bb,csv_Σt_struct.Σt_inv,T,n);  
 
         # draw β
-        BEAVARs.Chan2020_draw_βsur_bb!(priorMinn_struct,β_hat_bb_struct,X,vecYt);
+        BEAVARs.Chan2020_draw_βsur_bb_NoPrUpd!(priorMinn_struct,β_hat_bb_struct,X,vecYt);
 
         # draw Σt and calculate Σt_inv
         BEAVARs.CCK2016_drawΣtsur!(vecYt,β_hat_bb_struct,csv_Σt_struct,csv_h_struct,n,T);

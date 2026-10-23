@@ -525,16 +525,16 @@ end
 function update_priorMinn!(prior_struct::BEAVARs.BVARpriorMinn,hyp_struct::BEAVARs.BVARmodelHypSetup)
     @unpack Cβ_vec, Vβ_vec, idx_kappa1, idx_kappa2, idx_kappa3, Vβ_inv_vecView, Vβ_inv,Vinvβ_prior,β_prior= prior_struct    
     for ii in eachindex(idx_kappa1)
-        Vβ_vec[idx_kappa1[ii]] = Cβ_vec[idx_kappa1[ii]] * hyp_struct.c1
+        Vβ_vec[idx_kappa1[ii]] = 2.0*Cβ_vec[idx_kappa1[ii]] * hyp_struct.c1
     end
     for ii in eachindex(idx_kappa2)
-        Vβ_vec[idx_kappa2[ii]] = Cβ_vec[idx_kappa2[ii]] * hyp_struct.c2
+        Vβ_vec[idx_kappa2[ii]] = 2.0*Cβ_vec[idx_kappa2[ii]] * hyp_struct.c2
     end
     for ii in eachindex(idx_kappa3)
-        Vβ_vec[idx_kappa3[ii]] = Cβ_vec[idx_kappa3[ii]] * hyp_struct.c3
+        Vβ_vec[idx_kappa3[ii]] = 2.0*Cβ_vec[idx_kappa3[ii]] * hyp_struct.c3
     end
     Vβ_inv_vecView .= 1.0./Vβ_vec;
-    mul!(Vinvβ_prior,Vβ_inv,β_prior)
+    mul!(Vinvβ_prior,Vβ_inv,β_prior);
 end
 
 
@@ -578,7 +578,7 @@ end
 """
     function Chan2020_draw_βsur_bb!(prior_struct,β_hat_struct,X,vecYt)
 
-        Draws β using the SUR method. The drawback is that this function mutates Vinvβ_prior in an unexpected way, so should be depreciated
+    Draws β using the SUR method. The drawback is that this function mutates Vinvβ_prior in an unexpected way, so should be depreciated
 """
 function Chan2020_draw_βsur_bb!(prior_struct,β_hat_struct,X,vecYt)
     @unpack Xsur, XtΣ_inv_den, XtΣ_inv_X, Σ_inv_bb, K_β, β_hat, β_draw, β_rand  = β_hat_struct;
@@ -601,7 +601,7 @@ end
 """
     function Chan2020_draw_βsur_bb_NoPrUpd!(prior_struct,β_hat_struct,X,vecYt)
 
-        Draws β using the SUR method. Does not update the minnesota prior in the function, should be updated outside if needed.
+    Draws β using the SUR method. Does not update the minnesota prior in the function, should be updated outside if needed.
 """
 function Chan2020_draw_βsur_bb_NoPrUpd!(prior_struct,β_hat_struct,X,vecYt)
     @unpack Xsur, XtΣ_inv_den, XtΣ_inv_X, Σ_inv_bb, K_β, β_hat, β_draw, β_rand  = β_hat_struct;
@@ -669,7 +669,11 @@ end
 function LinearAlgebra.mul!(C::AbstractMatrix, A::HBMatrix, S::SparseMatrixCSC)
     return LinearAlgebra.mul!(C, A, S, one(eltype(C)), zero(eltype(C)))
 end
+"""
+    mul!(C::AbstractMatrix, A::HBMatrix, S::SparseMatrixCSC,α::Number, β::Number)
 
+    A five-argument mul! for HBMatrix*SparseMatrixCSC multiplication. Written by an LLM, there is a testset to check for correctness.
+"""
 function LinearAlgebra.mul!(
     C::AbstractMatrix, A::HBMatrix, S::SparseMatrixCSC,
     α::Number, β::Number,
@@ -701,4 +705,58 @@ function LinearAlgebra.mul!(
         end
     end
     return C
+end
+
+@doc raw"""
+    update_hyp!(priorMinn_struct,β_hat_struct,hyp_struct,n,p)
+
+    Draw the Minnesota hyperparameters κ1 and κ2 using a Generalized Inverse Gaussian (GiG) distribution.
+
+    Uses a prior κj ∼ Gamma(c_{1,j}, c_{2,j}).
+"""
+function update_hyp!(priorMinn_struct,β_hat_struct,hyp_struct,n,p)
+    @unpack β_prior, Cβ_vec, Vβ_vec, Vβ_inv, Vβ_inv_vecView, Vinvβ_prior, idx_kappa1, idx_kappa2, idx_kappa3, Ψ_vec = priorMinn_struct
+    @unpack c_11, c_12, c_21, c_22 = hyp_struct;
+    @unpack β_draw = β_hat_struct;
+
+    sum_S_κ1 = sum( (β_draw[idx_kappa1] .- β_prior[idx_kappa1]).^2 ./(2.0.*Ψ_vec[idx_kappa1].*Cβ_vec[idx_kappa1]))
+    sum_S_κ2 = sum( (β_draw[idx_kappa2] .- β_prior[idx_kappa2]).^2 ./(2.0.*Ψ_vec[idx_kappa2].*Cβ_vec[idx_kappa2]))
+
+    κ1 = BEAVARs.gigrnd(c_11 - 0.5*n*p, 2.0*c_21,sum_S_κ1,1)[];
+    κ2 = BEAVARs.gigrnd(c_12 - 0.5*(n-1)*n*p, 2.0*c_22,sum_S_κ2,1)[];
+
+    return κ1, κ2
+    
+end
+
+"""
+    update_hyp_llmopt!(priorMinn_struct,β_hat_struct,hyp_struct,n,p)
+
+    Draw the Minnesota hyperparameters κ1 and κ2 using a Generalized Inverse Gaussian (GiG) distribution.
+    
+    Uses a prior κj ∼ Gamma(c_{1,j}, c_{2,j}).
+
+    An LLM-optimized version of update_hyp!(). There is a test that checks whether sum_S_k1 and sum_S_k2 are equivalent
+"""
+function update_hyp_llmopt!(priorMinn_struct,β_hat_struct,hyp_struct,n,p)
+    @unpack β_prior, Cβ_vec, idx_kappa1, idx_kappa2, Ψ_vec = priorMinn_struct
+    @unpack c_11, c_12, c_21, c_22 = hyp_struct;
+    @unpack β_draw = β_hat_struct;
+
+    sum_S_κ1 = 0.0
+    for idx in idx_kappa1
+        diff = β_draw[idx] - β_prior[idx]
+        sum_S_κ1 += diff^2 / (2.0 * Ψ_vec[idx] * Cβ_vec[idx])
+    end
+
+    sum_S_κ2 = 0.0
+    for idx in idx_kappa2
+        diff = β_draw[idx] - β_prior[idx]
+        sum_S_κ2 += diff^2 / (2.0 * Ψ_vec[idx] * Cβ_vec[idx])
+    end
+
+    κ1 = BEAVARs.gigrnd(c_11 - 0.5*n*p, 2.0*c_21, sum_S_κ1, 1)[1]
+    κ2 = BEAVARs.gigrnd(c_12 - 0.5*(n-1)*n*p, 2.0*c_22, sum_S_κ2, 1)[1]
+
+    return κ1, κ2
 end

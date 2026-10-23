@@ -20,4 +20,8 @@ using BlockBandedMatrices, BlockArrays
     @testset "testset_CPZ2023.jl" begin
         include("testset_CPZ2023.jl")    
     end
+
+    @testset "test_update_hyp_and_llm.jl" begin
+        include("test_update_hyp_and_llm.jl")
+    end
 end
